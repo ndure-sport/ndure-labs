@@ -40,6 +40,9 @@ export type Order = {
   consent_version: string;
   src: string | null;
   stripe_session_id: string | null;
+  first_event_type_id: number | null;
+  first_start: string | null;
+  first_status: 'none' | 'pending' | 'booked' | 'failed';
 };
 
 export type Booking = {

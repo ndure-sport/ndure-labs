@@ -43,17 +43,34 @@ async function send(mail: Mail): Promise<void> {
   if (!res.ok) console.error('Brevo send failed', res.status, await res.text());
 }
 
-export async function sendOrderLink(o: { rider_name: string; rider_email: string; token: string; qty: number }) {
+export async function sendOrderLink(o: {
+  rider_name: string;
+  rider_email: string;
+  token: string;
+  qty: number;
+  first_status?: string;
+  first_start?: string | null;
+}) {
   const first = o.rider_name.split(' ')[0];
   const link = `${appUrl()}/order/${o.token}`;
-  const sessions = o.qty === 1 ? 'your session' : `your ${o.qty} sessions`;
+  const when = o.first_start
+    ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Copenhagen', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(o.first_start))
+    : '';
+  const rest = o.qty > 1 ? ` You have ${o.qty - 1} more ${o.qty - 1 === 1 ? 'session' : 'sessions'} to book whenever it suits you.` : '';
+  let intro: string;
+  if (o.first_status === 'booked') {
+    intro = `Thanks, you're booked for ${when}. A calendar invite is on its way separately.${rest}\n\nYour private link to change or cancel, or book your next session:\n${link}`;
+  } else if (o.first_status === 'failed') {
+    intro = `Thanks, your payment went through. Unfortunately the session you picked (${when}) filled up while you were paying. Your session is safe on your account; please choose another time here:\n${link}`;
+  } else {
+    intro = `Thanks, your payment went through. Use this link to choose a date for ${o.qty === 1 ? 'your session' : `your ${o.qty} sessions`}, change a date or cancel:\n${link}`;
+  }
   await send({
     to: { email: o.rider_email, name: o.rider_name },
-    subject: 'Your NDURE Labs sessions',
+    subject: o.first_status === 'booked' ? `NDURE Labs, ${when}` : 'Your NDURE Labs sessions',
     text: `Hi ${first},
 
-Thanks, your payment went through. Use this link to choose a date for ${sessions}, change a date or cancel:
-${link}
+${intro}
 
 Keep the link to yourself, it works without a password.
 

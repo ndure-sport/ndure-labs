@@ -1,6 +1,6 @@
 # NDURE Labs sign up and booking
 
-The app behind **book.ndure.dk**. Riders pick sessions, fill in their details and consent, pay with Stripe, then choose a date. Each rider gets a private link to book the rest of a pack, change a date or cancel. The team sees everyone in Cal.com, in their own calendar, and on `/admin`.
+The app behind **book.ndure.dk**. Riders pick sessions, choose a date (the earliest free one is suggested, or they browse a month calendar), fill in their details and consent, then pay with Stripe. Their seat is held while they pay and booked in Cal.com the moment the payment goes through. Each rider gets a private link to book the rest of a pack, change a date or cancel. The team sees everyone in Cal.com, in their own calendar, and on `/admin`.
 
 ```
 Framer page (ndure.dk/labs)
@@ -31,7 +31,7 @@ Plan about half a day. Do everything in **test mode** first.
 
 ### 1. Supabase (database, EU)
 1. Create a project at supabase.com. **Pick an EU region** (Frankfurt or Stockholm).
-2. SQL editor → paste `supabase/schema.sql` → Run.
+2. SQL editor → paste `supabase/schema.sql` → Run. (If you already ran an older `schema.sql`, also run `supabase/002_date_before_pay.sql`.)
 3. Settings → API: copy the Project URL and the `service_role` key into `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. The service role key must never go in the browser or in Framer.
 
 ### 2. Cal.com (booking engine)
@@ -97,8 +97,9 @@ The `src` value is saved on each order and shown on `/admin`, so you can see whi
 
 Use Stripe test card `4242 4242 4242 4242`, any future date, any CVC.
 
-1. Buy 1 session. You land on your order page, and within seconds the date picker opens. Book a morning.
-   **Check:** the booking is in Cal.com and in the team calendar; the rider got the Cal.com invite and our order email.
+1. Buy 1 session: pick the suggested earliest morning, pay. Your order page says "One moment", then shows the session as booked.
+   **Check:** the booking is in Cal.com and in the team calendar; the rider got the Cal.com invite and our email with the date.
+   **Hold check:** start a second checkout for the same session in another browser but don't pay. The session shows one seat less for everyone else, and comes back about 35 minutes later.
 2. Change the date from the order page. **Check:** Cal.com shows the new time and no old seat.
 3. Cancel from the order page. **Check:** the order shows 1 session left again.
 4. Buy 5 sessions with a partner. **Check:** the partner gets the consent email; only sessions with 2 free seats are offered; both appear in Cal.com.
@@ -120,6 +121,12 @@ npm test                     # pricing rules
 ```
 
 For webhooks locally, use `stripe listen --forward-to localhost:3000/api/webhooks/stripe`.
+
+## Where the team sees sessions
+
+* **Cal.com → Bookings → Upcoming:** every booking, with rider details.
+* **Your team calendar** (Outlook or Google), once connected in Cal.com.
+* **`/admin`** on this app: per day, who comes when, partner, FTP and goal, consent and filming flags, plus paid riders who haven't booked yet.
 
 ## Known limits of version 1
 

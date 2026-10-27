@@ -1,32 +1,69 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { quote, type PricingConfig, type AddonKey } from '@/lib/pricing';
 import { CONSENT_TEXT, CHANGE_DEADLINE_HOURS, VALID_MONTHS, type ConsentKey } from '@/lib/policy';
 import { Header } from './Header';
+import { SlotPicker, slotLabel, type Slot } from './SlotPicker';
 
-const STEPS = ['Sessions', 'Details', 'Payment', 'Date'];
+const STEPS = ['Sessions', 'Date', 'Details', 'Payment'];
 const eur = (n: number) => `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 type Props = { config: PricingConfig; src: string | null; cancelled: boolean; initialQty: number; initialPartner: boolean };
 
 export function SignUp({ config, src, cancelled, initialQty, initialPartner }: Props) {
-  const [step, setStep] = useState<0 | 1>(0);
+  const [step, setStep] = useState<0 | 1 | 2>(0);
   const [qty, setQty] = useState(Math.min(config.maxQty, Math.max(1, initialQty)));
   const [partner, setPartner] = useState(initialPartner);
   const [addons, setAddons] = useState<AddonKey[]>([]);
+  const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [slot, setSlot] = useState<Slot | null>(null);
+  const [later, setLater] = useState(false);
   const [rider, setRider] = useState({ name: '', email: '', phone: '', ftp: '', goal: 'Racing' });
   const [partnerInfo, setPartnerInfo] = useState({ name: '', email: '' });
   const [consents, setConsents] = useState<Record<ConsentKey, boolean>>({ ready: false, health: false, terms: false, research: false, film: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(cancelled ? 'Payment was cancelled. Nothing was charged.' : null);
 
+  const need = partner ? 2 : 1;
+
+  async function loadSlots() {
+    setSlots(null);
+    setSlotsError(null);
+    try {
+      const r = await fetch(`/api/slots?need=${need}`, { cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not load free sessions.');
+      setSlots(d.slots);
+    } catch (e) {
+      setSlotsError((e as Error).message);
+    }
+  }
+
+  // Free sessions depend on whether a partner rides along (needs 2 seats).
+  useEffect(() => {
+    loadSlots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [need]);
+
   const q = useMemo(() => quote(config, { qty, partner, addons }), [config, qty, partner, addons]);
   const tiers = [...config.tiers].sort((a, b) => a.min - b.min);
   const enabledAddons = config.addons.filter((a) => a.enabled);
+  const canLater = qty > 1;
+  const dateOk = !!slot || (later && canLater);
   const requiredOk = consents.ready && consents.health && consents.terms;
   const detailsOk =
-    requiredOk && rider.name.trim() && /\S+@\S+\.\S+/.test(rider.email) && (!partner || (partnerInfo.name.trim() && /\S+@\S+\.\S+/.test(partnerInfo.email)));
+    dateOk &&
+    requiredOk &&
+    rider.name.trim() &&
+    /\S+@\S+\.\S+/.test(rider.email) &&
+    (!partner || (partnerInfo.name.trim() && /\S+@\S+\.\S+/.test(partnerInfo.email)));
+
+  function go(s: 0 | 1 | 2) {
+    setStep(s);
+    window.scrollTo({ top: 0 });
+  }
 
   function toggleAddon(k: AddonKey) {
     setAddons((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
@@ -40,9 +77,22 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qty, partner, addons, rider, partnerInfo, consents, src })
+        body: JSON.stringify({
+          qty, partner, addons, rider, partnerInfo, consents, src,
+          slot: slot && !later ? { eventTypeId: slot.eventTypeId, start: slot.start } : null,
+          later: later && canLater
+        })
       });
       const data = await res.json();
+      if (res.status === 409) {
+        // The session was taken while they filled in the form. Back to the calendar with fresh times.
+        setSlot(null);
+        setError(data.error || 'That session just filled up. Pick another one.');
+        loadSlots();
+        go(1);
+        setBusy(false);
+        return;
+      }
       if (!res.ok || !data.url) throw new Error(data.error || 'Payment could not be started.');
       window.location.href = data.url;
     } catch (e) {
@@ -53,8 +103,21 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
 
   const cta =
     step === 0
-      ? { text: 'Continue', disabled: false, run: () => { setStep(1); window.scrollTo({ top: 0 }); } }
-      : { text: busy ? 'Opening payment…' : `Pay ${eur(q.total)}`, disabled: !detailsOk || busy, run: pay };
+      ? { text: 'Choose a date', short: 'Choose a date', disabled: false, run: () => go(1) }
+      : step === 1
+        ? { text: dateOk ? 'Continue' : 'Pick a session', short: 'Continue', disabled: !dateOk, run: () => go(2) }
+        : { text: busy ? 'Opening payment…' : `Pay ${eur(q.total)}`, short: 'Pay', disabled: !detailsOk || busy, run: pay };
+
+  const note =
+    step === 0
+      ? slots && slots.length > 0
+        ? `Next free session: ${slotLabel(slots[0])}.`
+        : 'You choose your date in the next step.'
+      : step === 1
+        ? 'Your seat is held while you pay.'
+        : requiredOk
+          ? 'Secure payment by Stripe. Discount codes can be added there.'
+          : 'Readiness, data consent and terms are required.';
 
   return (
     <>
@@ -100,7 +163,7 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
 
               <section className="sec" aria-labelledby="s-partner">
                 <div className="sec-hd"><h2 id="s-partner">Bring someone</h2></div>
-                <button type="button" className={`row${partner ? ' on' : ''}`} aria-pressed={partner} onClick={() => setPartner((p) => !p)}>
+                <button type="button" className={`row${partner ? ' on' : ''}`} aria-pressed={partner} onClick={() => { setPartner((p) => !p); setSlot(null); }}>
                   <span className="box" aria-hidden="true">{partner ? '✓' : ''}</span>
                   <span className="txt"><b>Training partner</b><span className="small muted">Rides in the same session as you and gets their own report.</span></span>
                   <span className="price">{eur(config.partner)}</span>
@@ -123,7 +186,6 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
               <ul className="ruled">
                 <li>Sessions stay valid for {VALID_MONTHS} months.</li>
                 <li>Change or cancel for free up to {CHANGE_DEADLINE_HOURS} hours before.</li>
-                <li>You choose your date right after paying.</li>
               </ul>
               <p className="small muted" style={{ margin: 0 }}>
                 Signing up a team or club? <a href="mailto:contact@ndure.dk?subject=NDURE%20Labs%20team%20price">Ask for a price per rider</a>.
@@ -132,8 +194,29 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
           )}
 
           {step === 1 && (
+            <div className="stack-lg">
+              <button type="button" className="linkbtn" onClick={() => go(0)}>Back to sessions</button>
+              <div className="stack">
+                <h1 className="h1">{qty > 1 ? 'Choose your first session.' : 'Choose your session.'}</h1>
+                <p className="lead">
+                  Tuesday to Friday, morning 09:30 or afternoon 13:00. Three riders a day.
+                  {partner ? ' Only sessions with 2 free spots are shown, for you and your partner.' : ''}
+                  {qty > 1 ? ` You book your other ${qty - 1} later with your personal link.` : ''}
+                </p>
+              </div>
+              <SlotPicker slots={slots} need={need} value={later ? null : slot} onChange={(s) => { setSlot(s); setLater(false); }} error={slotsError} autoPickEarliest={!later} />
+              {canLater && (
+                <label className="consent opt">
+                  <input type="checkbox" checked={later} onChange={() => setLater((l) => !l)} />
+                  <span>I'm not sure yet, I'll choose all my dates after paying.</span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {step === 2 && (
             <form className="stack-lg" onSubmit={(e) => { e.preventDefault(); pay(); }} aria-label="Your details">
-              <button type="button" className="linkbtn" onClick={() => setStep(0)}>Back to sessions</button>
+              <button type="button" className="linkbtn" onClick={() => go(1)}>Back to date</button>
               <h1 className="h1">Your details.</h1>
               <div className="grid-2">
                 <label className="field">Full name<input required autoComplete="name" value={rider.name} onChange={(e) => setRider({ ...rider, name: e.target.value })} /></label>
@@ -186,21 +269,25 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
               </div>
             ))}
           </div>
+          {step > 0 && (
+            <div className="line" style={{ padding: '0 16px 14px' }}>
+              <span className="l"><span>{qty > 1 ? 'First session' : 'Session'}</span><small>{later ? 'You choose after paying' : slot ? slot.label : 'Not chosen yet'}</small></span>
+              <span className="a">{later ? '' : slot ? slotLabel(slot) : ''}</span>
+            </div>
+          )}
           <div className="totals">
             <div className="t"><span className="muted">Total</span><strong>{eur(q.total)}</strong></div>
             <div className="s"><span>Per session</span><span>{eur(q.unit)}</span></div>
             {q.saving > 0 && <div className="s"><span>Saved vs single sessions</span><span style={{ color: 'var(--accent)', fontWeight: 600 }}>{eur(q.saving)}</span></div>}
           </div>
           <button type="button" className="btn full" disabled={cta.disabled} onClick={cta.run}>{cta.text}</button>
-          <span className="aside-note">
-            {step === 0 ? 'Secure payment by Stripe. Discount codes can be added there.' : requiredOk ? 'You pay on the next screen, then choose your date.' : 'Readiness, data consent and terms are required.'}
-          </span>
+          <span className="aside-note">{note}</span>
         </aside>
       </main>
 
       <div className="mbar">
-        <span>{q.qty + (q.partner ? 1 : 0) + q.addons.length} items, <b>{eur(q.total)}</b></span>
-        <button type="button" className="btn" disabled={cta.disabled} onClick={cta.run}>{step === 0 ? 'Continue' : 'Pay'}</button>
+        <span>{step > 0 && slot && !later ? slotLabel(slot) : `${q.qty + (q.partner ? 1 : 0) + q.addons.length} items`}, <b>{eur(q.total)}</b></span>
+        <button type="button" className="btn" disabled={cta.disabled} onClick={cta.run}>{cta.short}</button>
       </div>
     </>
   );

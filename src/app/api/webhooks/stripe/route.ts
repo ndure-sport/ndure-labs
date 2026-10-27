@@ -3,6 +3,8 @@ import { stripe } from '@/lib/stripe';
 import { env } from '@/lib/env';
 import { db, type Order } from '@/lib/db';
 import { sendOrderLink, sendPartnerInvite } from '@/lib/email';
+import { book } from '@/lib/booking';
+import { releaseHolds } from '@/lib/holds';
 
 // Stripe tells us when a payment is done. This is the only place an order becomes paid
 // and gets its session credits, so a rider closing the tab after paying is not a problem.
@@ -42,7 +44,21 @@ export async function POST(req: Request) {
     if (error) return new Response('db error', { status: 500 });
     const order = (data?.[0] as Order | undefined) ?? null;
     if (order) {
-      await sendOrderLink(order);
+      // Book the session the rider picked before paying. Their seat was held during checkout.
+      let firstStatus: Order['first_status'] = order.first_status;
+      if (order.first_status === 'pending' && order.first_event_type_id && order.first_start) {
+        try {
+          await book(order, order.first_event_type_id, order.first_start);
+          firstStatus = 'booked';
+        } catch (e) {
+          // Rare: the session was filled from Cal.com directly while they paid. The credit stays on the order.
+          console.error('Booking the chosen session after payment failed', order.id, e);
+          firstStatus = 'failed';
+        }
+        await db().from('orders').update({ first_status: firstStatus }).eq('id', order.id);
+      }
+      await releaseHolds(order.id).catch(() => {});
+      await sendOrderLink({ ...order, first_status: firstStatus });
       if (order.partner && order.partner_email && order.partner_token) {
         await sendPartnerInvite({
           rider_name: order.rider_name,
@@ -57,7 +73,10 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.expired') {
     const session = event.data.object as Stripe.Checkout.Session;
     const orderId = session.metadata?.order_id;
-    if (orderId) await db().from('orders').update({ status: 'expired' }).eq('id', orderId).eq('status', 'pending');
+    if (orderId) {
+      await db().from('orders').update({ status: 'expired' }).eq('id', orderId).eq('status', 'pending');
+      await releaseHolds(orderId).catch(() => {});
+    }
   }
 
   if (event.type === 'charge.refunded') {

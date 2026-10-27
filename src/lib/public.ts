@@ -9,6 +9,7 @@ export function publicOrder(order: Order, bookings: Booking[]) {
     firstName: order.rider_name.split(' ')[0],
     qty: order.qty,
     creditsLeft: order.credits_left,
+    first: { status: order.first_status ?? 'none', start: order.first_start },
     partner: order.partner
       ? { name: order.partner_name, used: order.partner_used, consented: !!order.partner_consents }
       : null,

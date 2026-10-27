@@ -1,8 +1,9 @@
 import 'server-only';
 import { db, useCredit, returnCredit, type Order, type Booking } from './db';
-import { allSlots, slotsFor, createBooking, cancelSeat, getBooking, sameInstant, type CreatedSeat } from './calcom';
+import { allSlots, slotsFor, createBooking, cancelSeat, getBooking, sameInstant, type CreatedSeat, type Slot } from './calcom';
 import { eventTypes } from './env';
 import { canChange, hoursUntil, CHANGE_DEADLINE_HOURS } from './policy';
+import { heldSeats, slotKey } from './holds';
 
 export class BookingError extends Error {
   constructor(message: string, public status = 400) {
@@ -16,12 +17,40 @@ export function seatsNeeded(order: Order, existing?: Booking): number {
   return order.partner && !order.partner_used ? 2 : 1;
 }
 
-export async function availableSlots(order: Order, existing?: Booking) {
+function bookingWindow() {
   const weeks = Number(process.env.BOOKING_WEEKS_AHEAD || 6);
   const from = new Date();
   const to = new Date(from.getTime() + weeks * 7 * 86_400_000);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+// Cal.com's free seats minus seats held for riders who are paying right now.
+async function freeAfterHolds(slots: Slot[], from: string, to: string, excludeOrder?: string): Promise<Slot[]> {
+  const held = await heldSeats(from, to, excludeOrder);
+  return slots.map((s) => ({ ...s, free: Math.max(0, s.free - (held.get(slotKey(s.eventTypeId, s.start)) ?? 0)) }));
+}
+
+// Raw Cal.com slots are cached briefly so a busy sign up page doesn't hammer the API.
+// Holds are always read fresh, and every booking is checked again right before it's made.
+let rawCache: { at: number; slots: Slot[] } | null = null;
+async function cachedSlots(from: string, to: string): Promise<Slot[]> {
+  if (rawCache && Date.now() - rawCache.at < 20_000) return rawCache.slots;
+  const slots = await allSlots(from, to);
+  rawCache = { at: Date.now(), slots };
+  return slots;
+}
+
+// For the sign up page, before there is an order.
+export async function publicSlots(need: number) {
+  const { from, to } = bookingWindow();
+  const slots = await freeAfterHolds(await cachedSlots(from, to), from, to);
+  return slots.filter((s) => s.free >= need && new Date(s.start).getTime() > Date.now());
+}
+
+export async function availableSlots(order: Order, existing?: Booking) {
+  const { from, to } = bookingWindow();
   const need = seatsNeeded(order, existing);
-  const slots = await allSlots(from.toISOString(), to.toISOString());
+  const slots = await freeAfterHolds(await allSlots(from, to), from, to, order.id);
   return {
     need,
     slots: slots
@@ -30,7 +59,8 @@ export async function availableSlots(order: Order, existing?: Booking) {
   };
 }
 
-async function confirmFree(eventTypeId: number, start: string, need: number) {
+// Seats Cal.com still has free in one session, before subtracting holds.
+export async function calcomFree(eventTypeId: number, start: string) {
   const et = eventTypes().find((e) => e.id === eventTypeId);
   if (!et) throw new BookingError('Unknown session type.');
   const day = new Date(start);
@@ -38,7 +68,13 @@ async function confirmFree(eventTypeId: number, start: string, need: number) {
   const to = new Date(day.getTime() + 60_000).toISOString();
   const slots = await slotsFor(et, from, to);
   const slot = slots.find((s) => sameInstant(s.start, start));
-  if (!slot || slot.free < need) {
+  return { et, free: slot ? slot.free : 0, from, to };
+}
+
+async function confirmFree(eventTypeId: number, start: string, need: number, orderId?: string) {
+  const { et, free, from, to } = await calcomFree(eventTypeId, start);
+  const held = (await heldSeats(from, to, orderId)).get(slotKey(eventTypeId, start)) ?? 0;
+  if (free - held < need) {
     throw new BookingError(need > 1 ? 'There are no longer 2 free spots in this session. Pick another one.' : 'This session just filled up. Pick another one.', 409);
   }
   return et;
@@ -76,7 +112,7 @@ async function bookSeats(order: Order, eventTypeId: number, start: string, withP
 export async function book(order: Order, eventTypeId: number, start: string): Promise<Booking> {
   if (order.status !== 'paid') throw new BookingError('This order is not paid yet.', 402);
   const withPartner = seatsNeeded(order) === 2;
-  const et = await confirmFree(eventTypeId, start, withPartner ? 2 : 1);
+  const et = await confirmFree(eventTypeId, start, withPartner ? 2 : 1, order.id);
 
   if (!(await useCredit(order.id))) throw new BookingError('You have no sessions left on this order.', 409);
 
@@ -134,7 +170,7 @@ export async function reschedule(order: Order, booking: Booking, eventTypeId: nu
   if (!canChange(booking.start_at)) {
     throw new BookingError(`Sessions can be changed up to ${CHANGE_DEADLINE_HOURS} hours before. Email contact@ndure.dk if something came up.`, 409);
   }
-  const et = await confirmFree(eventTypeId, start, booking.with_partner ? 2 : 1);
+  const et = await confirmFree(eventTypeId, start, booking.with_partner ? 2 : 1, order.id);
   let seats;
   try {
     seats = await bookSeats(order, eventTypeId, start, booking.with_partner);

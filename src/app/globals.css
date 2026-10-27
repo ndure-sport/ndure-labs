@@ -138,3 +138,23 @@ table.admin thead th { font-family: var(--mono); font-size: 9px; font-weight: 40
   .mbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg); border-top: 1px solid var(--ink); padding: 8px 16px; align-items: center; justify-content: space-between; gap: 12px; }
   .aside { position: static; }
 }
+
+/* Date picker: earliest suggestion + month calendar */
+.picker { display: flex; flex-direction: column; gap: 14px; }
+.suggest { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; border: 1px solid var(--line); padding: 12px 12px 12px 14px; }
+.suggest.on { border-color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+.suggest b { font-weight: 600; }
+.cal { border: 1px solid var(--line); padding: 10px 12px 12px; max-width: 420px; }
+.cal-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.cal-hd b { font-weight: 600; font-size: 13px; }
+.cal-nav { width: 44px; height: 44px; border: 0; background: none; font-size: 18px; }
+.cal-nav:disabled { color: #c4c4c4; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cal-dow { font-family: var(--mono); font-size: 9px; color: var(--muted); text-align: center; padding: 4px 0; }
+.cal-day { position: relative; min-height: 44px; border: 1px solid transparent; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 13px; color: #b5b5b5; }
+.cal-day.open { color: var(--ink); border-color: var(--line); font-weight: 500; }
+.cal-day.open:hover { border-color: var(--ink); }
+.cal-day.pick { box-shadow: inset 0 -2px 0 var(--accent); }
+.cal-day.sel { background: var(--ink); color: #fff; border-color: var(--ink); }
+.cal-free { font-family: var(--mono); font-size: 8px; opacity: 0.75; }
+.picker .grid-chips { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); max-width: 420px; }

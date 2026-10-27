@@ -4,6 +4,8 @@ import { stripe, cents } from '@/lib/stripe';
 import { appUrl } from '@/lib/env';
 import { consentRecord, REQUIRED_CONSENTS, CONSENT_VERSION, VALID_MONTHS } from '@/lib/policy';
 import { newToken, cleanText, isEmail, json, fail } from '@/lib/util';
+import { calcomFree, BookingError } from '@/lib/booking';
+import { placeHold, releaseHolds } from '@/lib/holds';
 
 export async function POST(req: Request) {
   let body: any;
@@ -41,6 +43,25 @@ export async function POST(req: Request) {
     return fail((e as Error).message);
   }
 
+  // The first session: picked before paying. Riders buying a pack may choose later.
+  const slotEt = Number(body?.slot?.eventTypeId);
+  const slotStart = typeof body?.slot?.start === 'string' && !Number.isNaN(Date.parse(body.slot.start)) ? body.slot.start : null;
+  const hasSlot = !!slotEt && !!slotStart;
+  if (!hasSlot && !(body?.later === true && q.qty > 1)) return fail('Pick a date for your session.');
+  if (hasSlot && new Date(slotStart!).getTime() < Date.now()) return fail('That session has already started. Pick another one.');
+  const need = partner ? 2 : 1;
+  let calFree = 0;
+  if (hasSlot) {
+    try {
+      calFree = (await calcomFree(slotEt, slotStart!)).free;
+    } catch (e) {
+      if (e instanceof BookingError) return fail(e.message, e.status);
+      console.error('Slot check failed', e);
+      return fail('Could not check that session. Try again in a moment.', 502);
+    }
+    if (calFree < need) return fail('That session just filled up. Pick another one.', 409);
+  }
+
   const token = newToken();
   const { data: order, error } = await db()
     .from('orders')
@@ -61,13 +82,30 @@ export async function POST(req: Request) {
       partner_token: partner ? newToken() : null,
       consents: consentRecord(consents),
       consent_version: CONSENT_VERSION,
-      src: cleanText(body?.src, 60) || null
+      src: cleanText(body?.src, 60) || null,
+      first_event_type_id: hasSlot ? slotEt : null,
+      first_start: hasSlot ? new Date(slotStart!).toISOString() : null,
+      first_status: hasSlot ? 'pending' : 'none'
     })
     .select('id')
     .single();
   if (error || !order) {
     console.error('Order insert failed', error);
     return fail('Something went wrong on our side. Please try again.', 500);
+  }
+
+  // Hold the seats while the rider pays, so nobody else can take them in the meantime.
+  if (hasSlot) {
+    let held = false;
+    try {
+      held = await placeHold(order.id, slotEt, slotStart!, need, calFree);
+    } catch (e) {
+      console.error('Hold failed', e);
+    }
+    if (!held) {
+      await db().from('orders').delete().eq('id', order.id);
+      return fail('Someone is booking that session right now. Pick another one.', 409);
+    }
   }
 
   const lineItems: any[] = [
@@ -104,6 +142,8 @@ export async function POST(req: Request) {
       payment_intent_data: { metadata: { order_id: order.id }, description: `NDURE Labs, ${q.qty} session(s)` },
       allow_promotion_codes: true,
       locale: 'auto',
+      // Stripe's minimum. The seat hold lasts a little longer, so a rider who pays at minute 29 still gets their seat.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: `${appUrl()}/order/${token}?paid=1`,
       cancel_url: `${appUrl()}/?cancelled=1`
     });
@@ -111,6 +151,7 @@ export async function POST(req: Request) {
     return json({ url: session.url });
   } catch (e) {
     console.error('Stripe session failed', e);
+    await releaseHolds(order.id).catch(() => {});
     return fail('Payment could not be started. Please try again.', 502);
   }
 }
