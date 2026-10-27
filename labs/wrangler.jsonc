@@ -23,7 +23,7 @@
   // Every hour: reminders, follow ups, retest nudges, staff summary, unpaid seats.
   "triggers": { "crons": ["5 * * * *"] },
   "vars": {
-    "APP_URL": "https://ndure-labs.ndure.workers.dev",
+    "APP_URL": "https://ndure-labs.arthur-2b2.workers.dev",
     "TEAM_EMAILS": "arthurherbosch@hotmail.com",
     "EMAIL_FROM_NAME": "NDURE Labs",
     "EMAIL_FROM_ADDRESS": "labs@ndure.dk",
