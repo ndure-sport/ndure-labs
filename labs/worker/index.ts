@@ -91,7 +91,11 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
     } catch (e) {
       console.error(e);
       await change(env, (s) => engine(s).checkoutExpired(order.id));
-      return fail('Payment could not be started. Please try again.', 502);
+      // With test keys, show Stripe's own reason so setup problems are easy to fix.
+      const key = env.STRIPE_SECRET_KEY || '';
+      const testing = !key || key.startsWith('sk_test_') || key.startsWith('rk_test_');
+      const reason = !key ? 'STRIPE_SECRET_KEY is not set in Cloudflare.' : String((e as Error).message || e);
+      return fail(testing ? `Payment could not be started (test mode): ${reason}` : 'Payment could not be started. Please try again.', 502);
     }
     // Remembers this checkout in this browser, so the rider is logged in when they come back from Stripe.
     const co = await sign(s0.secrets.session, { o: order.id, exp: Date.now() + 2 * 3_600_000 });
