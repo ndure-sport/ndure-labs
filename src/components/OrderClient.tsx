@@ -95,8 +95,9 @@ export function OrderClient({ token, initial, justPaid }: { token: string; initi
     else act({ action: 'reschedule', bookingId: mode.bookingId, ...base }, `Moved to ${when(pick.start)}. Your calendar invite is updated.`);
   }
 
-  function cancel(id: string, start: string) {
-    if (!window.confirm(`Cancel your session on ${when(start)}? The session goes back to your account.`)) return;
+  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  function cancel(id: string) {
+    setConfirmCancel(null);
     act({ action: 'cancel', bookingId: id }, 'Cancelled. The session is back in your account.');
   }
 
@@ -172,10 +173,16 @@ export function OrderClient({ token, initial, justPaid }: { token: string; initi
               {upcoming.map((b) => (
                 <div key={b.id} className="session">
                   <span className="when"><b>{when(b.start)}</b><span className="small muted">{b.label}{b.withPartner ? ', with your partner' : ''}</span></span>
-                  {b.changeable ? (
+                  {b.changeable && confirmCancel === b.id ? (
+                    <span className="acts" role="group" aria-label="Confirm cancellation">
+                      <span className="small" style={{ alignSelf: 'center' }}>Cancel this session?</span>
+                      <button type="button" className="linkbtn" style={{ color: 'var(--bad)' }} disabled={busy} onClick={() => cancel(b.id)}>Yes, cancel</button>
+                      <button type="button" className="linkbtn" onClick={() => setConfirmCancel(null)}>Keep it</button>
+                    </span>
+                  ) : b.changeable ? (
                     <span className="acts">
                       <button type="button" className="linkbtn" disabled={busy} onClick={() => setMode({ type: 'reschedule', bookingId: b.id })}>Change date</button>
-                      <button type="button" className="linkbtn" disabled={busy} onClick={() => cancel(b.id, b.start)}>Cancel</button>
+                      <button type="button" className="linkbtn" disabled={busy} onClick={() => setConfirmCancel(b.id)}>Cancel</button>
                     </span>
                   ) : (
                     <span className="small muted">Less than 24 h to go. Email contact@ndure.dk to change.</span>

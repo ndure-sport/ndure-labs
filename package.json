@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/lib/*.test.ts"
+    "test": "node --import tsx --test src/lib/*.test.ts",
+    "demo": "node demo/build.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -22,6 +23,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

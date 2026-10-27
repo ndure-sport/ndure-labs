@@ -5,6 +5,7 @@ import { quote, type PricingConfig, type AddonKey } from '@/lib/pricing';
 import { CONSENT_TEXT, CHANGE_DEADLINE_HOURS, VALID_MONTHS, type ConsentKey } from '@/lib/policy';
 import { Header } from './Header';
 import { SlotPicker, slotLabel, type Slot } from './SlotPicker';
+import { navigate } from '@/lib/nav';
 
 const STEPS = ['Sessions', 'Date', 'Details', 'Payment'];
 const eur = (n: number) => `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -94,7 +95,7 @@ export function SignUp({ config, src, cancelled, initialQty, initialPartner }: P
         return;
       }
       if (!res.ok || !data.url) throw new Error(data.error || 'Payment could not be started.');
-      window.location.href = data.url;
+      navigate(data.url);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
