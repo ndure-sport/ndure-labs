@@ -6,6 +6,11 @@ import type { Config } from '../core/config';
 import { hmacHex } from './auth';
 
 export async function createCheckout(env: Env, config: Config, order: Order, email: string, appUrl: string): Promise<string> {
+  // Safety lock: real payments only once ALLOW_LIVE_PAYMENTS is deliberately set to "yes" for launch.
+  const key = env.STRIPE_SECRET_KEY || '';
+  if (/^(sk|rk)_live_/.test(key) && env.ALLOW_LIVE_PAYMENTS !== 'yes') {
+    throw new Error('A live Stripe key is set, but live payments are switched off. Use your test key (sk_test_ or rk_test_) until launch.');
+  }
   const f = new URLSearchParams();
   const cur = (env.CURRENCY || 'eur').toLowerCase();
   f.set('mode', 'payment');

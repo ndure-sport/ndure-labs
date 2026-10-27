@@ -93,7 +93,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
       await change(env, (s) => engine(s).checkoutExpired(order.id));
       // With test keys, show Stripe's own reason so setup problems are easy to fix.
       const key = env.STRIPE_SECRET_KEY || '';
-      const testing = !key || key.startsWith('sk_test_') || key.startsWith('rk_test_');
+      const testing = !key || /^(sk|rk)_(test|live)_/.test(key) && env.ALLOW_LIVE_PAYMENTS !== 'yes';
       const reason = !key ? 'STRIPE_SECRET_KEY is not set in Cloudflare.' : String((e as Error).message || e);
       return fail(testing ? `Payment could not be started (test mode): ${reason}` : 'Payment could not be started. Please try again.', 502);
     }

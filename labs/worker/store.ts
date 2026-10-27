@@ -19,6 +19,7 @@ export type Env = {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   BREVO_API_KEY: string;
+  ALLOW_LIVE_PAYMENTS?: string; // set to "yes" only on launch day
   // Only for local testing against fake services.
   STRIPE_API_BASE?: string;
   BREVO_API_BASE?: string;
