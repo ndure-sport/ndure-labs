@@ -63,6 +63,8 @@ export type Email = {
   subject: string;
   body: string;
   at: string;
+  sent?: boolean; // set once the email provider accepted it
+  error?: string;
 };
 
 export type LoginCode = { email: string; code: string; expiresAt: string; attempts: number };

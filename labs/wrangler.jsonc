@@ -1,0 +1,33 @@
+// Cloudflare setup for book.ndure.dk (test). Secrets are not in this file:
+// add STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and BREVO_API_KEY in the dashboard
+// under the Worker's Settings → Variables and Secrets.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ndure-labs",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "build": { "command": "node client/build.mjs" },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/calendar/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ndure-labs-test",
+      "database_id": "c5b27b7f-49ff-4b95-ac39-9e33f10b5634"
+    }
+  ],
+  // Every hour: reminders, follow ups, retest nudges, staff summary, unpaid seats.
+  "triggers": { "crons": ["5 * * * *"] },
+  "vars": {
+    "APP_URL": "https://ndure-labs.ndure.workers.dev",
+    "TEAM_EMAILS": "arthurherbosch@hotmail.com",
+    "EMAIL_FROM_NAME": "NDURE Labs",
+    "EMAIL_FROM_ADDRESS": "labs@ndure.dk",
+    "CURRENCY": "eur"
+  },
+  "observability": { "enabled": true }
+}
