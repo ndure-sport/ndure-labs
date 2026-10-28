@@ -1,0 +1,11 @@
+# Local testing only: copy to .dev.vars. All values are fake; test/fake-services.mjs answers on 8788.
+STRIPE_SECRET_KEY=sk_test_fake
+STRIPE_WEBHOOK_SECRET=whsec_localtest
+BREVO_API_KEY=fake
+STRIPE_API_BASE=http://127.0.0.1:8788
+BREVO_API_BASE=http://127.0.0.1:8788
+TURNSTILE_SECRET_KEY=test-secret
+TURNSTILE_SITE_KEY=test-site
+TURNSTILE_API_BASE=http://127.0.0.1:8788
+APP_URL=http://localhost:8787
+TEAM_EMAILS=team@ndure.dk

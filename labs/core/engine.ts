@@ -22,6 +22,42 @@ export class LabsError extends Error {
   }
 }
 
+// Longest text we store per field. Anything longer is cut, so nobody can bloat the data.
+export const LIMITS = { name: 80, email: 254, phone: 30, goal: 120, reason: 120, src: 40, start: 40, code: 12 };
+
+// One line of plain text: no line breaks or control characters, trimmed, at most `max` long.
+export function clean(v: unknown, max: number): string {
+  return String(v ?? '')
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export function cleanEmail(v: unknown): string {
+  const e = String(v ?? '').trim().toLowerCase();
+  return e.length <= LIMITS.email && EMAIL_RE.test(e) && !/[\u0000-\u001f\u007f]/.test(e) ? e : '';
+}
+
+// Text safe to put in a calendar file.
+export const icsText = (s: string) => clean(s, 200).replace(/[\\;,]/g, (m) => `\\${m}`);
+
+// Unguessable token for private links.
+export function randomId(bytes = 18): string {
+  const a = new Uint8Array(bytes);
+  crypto.getRandomValues(a);
+  return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// How long things are kept.
+const UNPAID_EXPIRE_HOURS = 2; // an unpaid checkout without a picked seat closes after this
+const EXPIRED_ORDER_KEEP_DAYS = 21; // long enough for slow bank payments to still be matched
+const EMAIL_KEEP_DAYS = 30;
+const LOGIN_FAILS_PER_DAY = 10; // wrong codes per account per 24 hours before it is locked
+const AUDIT_KEEP = 500;
+const ALERTS_KEEP = 200;
+
 export type Slot = { start: string; end: string; blockId: string; label: string; capacity: number; taken: number; free: number };
 
 export type Quote = {
@@ -157,8 +193,19 @@ export class Labs {
 
   // ---------- emails ----------
   private send(to: string, template: Email['template'], key: string, subject: string, body: string) {
-    if (this.db.emails.some((e) => e.key === key)) return;
+    if (this.db.emails.some((e) => e.key === key) || this.db.done.includes(key)) return;
     this.db.emails.push({ id: this.id('e'), key, to, template, subject, body, at: this.iso() });
+  }
+
+  // ---------- audit log and staff alerts ----------
+  audit(by: string, action: string, detail: string) {
+    this.db.audit.push({ at: this.iso(), by: clean(by, 120), action, detail: clean(detail, 300) });
+    if (this.db.audit.length > AUDIT_KEEP) this.db.audit.splice(0, this.db.audit.length - AUDIT_KEEP);
+  }
+
+  alert(kind: string, text: string) {
+    this.db.alerts.push({ id: this.id('a'), at: this.iso(), kind, text: clean(text, 500) });
+    if (this.db.alerts.length > ALERTS_KEEP) this.db.alerts.splice(0, this.db.alerts.length - ALERTS_KEEP);
   }
 
   // ---------- sign up and payment ----------
@@ -177,37 +224,52 @@ export class Labs {
     consents: Partial<Record<ConsentKey, boolean>>;
     src?: string;
   }): Order {
-    const q = quote(this.config, input.qty, input.partner);
-    const name = (input.name || '').trim();
-    const email = (input.email || '').trim().toLowerCase();
+    const q = quote(this.config, input.qty, !!input.partner);
+    const name = clean(input.name, LIMITS.name);
+    const email = cleanEmail(input.email);
+    const phone = clean(input.phone, LIMITS.phone) || null;
+    const goal = clean(input.goal, LIMITS.goal) || null;
+    const ftpN = Number(input.ftp);
+    const ftp = input.ftp != null && Number.isFinite(ftpN) && ftpN >= 30 && ftpN <= 1000 ? Math.round(ftpN) : null;
+    const start = input.start ? clean(input.start, LIMITS.start) : null;
+    const given = (input.consents && typeof input.consents === 'object' ? input.consents : {}) as Partial<Record<ConsentKey, boolean>>;
     if (!name) throw new LabsError('Fill in your name.', 'name');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new LabsError('Fill in a valid email address.', 'email');
-    for (const k of REQUIRED_CONSENTS) if (!input.consents[k]) throw new LabsError('Tick the readiness check, data consent and terms.', 'consent');
+    if (!email) throw new LabsError('Fill in a valid email address.', 'email');
+    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick the readiness check, data consent and terms.', 'consent');
+    const partnerName = input.partner ? clean(input.partnerName, LIMITS.name) : '';
+    const partnerEmail = input.partner ? cleanEmail(input.partnerEmail) : '';
     if (input.partner) {
-      if (!input.partnerName?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((input.partnerEmail || '').trim())) {
-        throw new LabsError("Fill in your partner's name and email.", 'partner');
-      }
-      if (input.partnerEmail!.trim().toLowerCase() === email) throw new LabsError('Your partner needs their own email address.', 'partner');
+      if (!partnerName || !partnerEmail) throw new LabsError("Fill in your partner's name and email.", 'partner');
+      if (partnerEmail === email) throw new LabsError('Your partner needs their own email address.', 'partner');
     }
-    if (!input.start && !(input.later && q.qty > 1)) throw new LabsError('Pick a date for your session.', 'date');
+    if (!start && !(input.later && q.qty > 1)) throw new LabsError('Pick a date for your session.', 'date');
     const need = input.partner ? 2 : 1;
-    if (input.start) this.assertBookable(input.start, need, {});
+
+    // One open payment per rider: a new checkout frees the seat held by an earlier unpaid one
+    // (for example after pressing back on the payment page and picking again).
+    let c = this.customerByEmail(email);
+    if (c) {
+      const open = new Set(this.db.orders.filter((o) => o.customerId === c!.id && o.status === 'pending').map((o) => o.id));
+      this.db.holds = this.db.holds.filter((h) => !open.has(h.orderId));
+    }
+    if (start) this.assertBookable(start, need, {});
+    // A rider who never paid and never logged in is still "new" (for example after pressing back on
+    // the payment page). Only a new rider's browser may be logged in automatically after paying.
+    const hasPaid = !!c && this.db.orders.some((o) => o.customerId === c!.id && (o.status === 'paid' || o.status === 'refunded'));
+    const isNew = !c || (!c.verified && !hasPaid);
 
     const consents: Consents = {
       at: this.iso(),
       version: CONSENT_VERSION,
-      items: Object.fromEntries((Object.keys(CONSENT_TEXT) as ConsentKey[]).map((k) => [k, !!input.consents[k]])) as Record<ConsentKey, boolean>
+      items: Object.fromEntries((Object.keys(CONSENT_TEXT) as ConsentKey[]).map((k) => [k, given[k] === true])) as Record<ConsentKey, boolean>
     };
-    let c = this.customerByEmail(email);
+    // A real rider's details are never changed by a checkout: anyone can type any email here.
     if (!c) {
-      c = { id: this.id('c'), email, name, phone: null, ftp: null, goal: null, createdAt: this.iso(), consents: null };
+      c = { id: this.id('c'), email, name, phone, ftp, goal, createdAt: this.iso(), consents, sv: 0 };
       this.db.customers.push(c);
+    } else if (isNew) {
+      Object.assign(c, { name, phone, ftp, goal, consents });
     }
-    c.name = name;
-    c.phone = input.phone?.trim() || c.phone;
-    c.ftp = input.ftp ?? c.ftp;
-    c.goal = input.goal || c.goal;
-    c.consents = consents;
 
     const o: Order = {
       id: this.id('o'),
@@ -217,35 +279,49 @@ export class Labs {
       unit: q.unit,
       total: q.total,
       remaining: 0,
-      partner: input.partner,
-      partnerName: input.partner ? input.partnerName!.trim() : null,
-      partnerEmail: input.partner ? input.partnerEmail!.trim().toLowerCase() : null,
+      partner: !!input.partner,
+      partnerName: input.partner ? partnerName : null,
+      partnerEmail: input.partner ? partnerEmail : null,
       partnerUsed: false,
       free: false,
-      src: input.src || null,
+      src: clean(input.src, LIMITS.src) || null,
       createdAt: this.iso(),
       paidAt: null,
       expiresAt: null,
-      firstStart: input.start || null,
-      firstStatus: input.start ? 'pending' : 'none'
+      firstStart: start,
+      firstStatus: start ? 'pending' : 'none',
+      newCustomer: isNew,
+      consents,
+      partnerToken: input.partner ? randomId() : null,
+      partnerConsents: null
     };
     this.db.orders.push(o);
-    if (input.start) {
-      this.db.holds.push({ orderId: o.id, start: input.start, seats: need, expiresAt: this.iso(this.now() + this.config.holdMinutes * 60_000) });
+    if (start) {
+      this.db.holds.push({ orderId: o.id, start, seats: need, expiresAt: this.iso(this.now() + this.config.holdMinutes * 60_000) });
     }
     return o;
   }
 
-  // Called when Stripe confirms the payment.
+  // Called when Stripe confirms the payment. A confirmed payment always becomes sessions,
+  // even when it arrives after the seat hold ran out (slow bank payments).
   paid(orderId: string): Order {
     const o = this.order(orderId);
     if (o.status === 'paid') return o; // Stripe can send the same message twice
-    if (o.status !== 'pending') throw new LabsError('This order can no longer be paid.', 'order_closed');
+    if (o.status === 'refunded') throw new LabsError('This order was closed by the team.', 'order_closed');
+    const late = o.status === 'expired';
     o.status = 'paid';
     o.paidAt = this.iso();
     o.expiresAt = this.iso(addMonths(this.now(), this.config.validityMonths));
     o.remaining = o.qty;
+    if (late) o.late = true;
     const c = this.customer(o.customerId);
+    if (!c.consents && o.consents) c.consents = o.consents;
+    // A second paid order for a rider who never proved their email: no more automatic logins,
+    // and any browser logged in that way is logged out (someone else may have used the email).
+    if (!o.free && !c.verified && this.db.orders.some((x) => x.id !== o.id && x.customerId === c.id && x.status === 'paid' && !x.free)) {
+      if (o.newCustomer) o.newCustomer = false;
+      c.sv = (c.sv ?? 0) + 1;
+    }
     this.send(
       c.email,
       'payment',
@@ -264,7 +340,19 @@ export class Labs {
     }
     this.db.holds = this.db.holds.filter((h) => h.orderId !== o.id);
     if (o.partner && o.partnerEmail) {
-      this.send(o.partnerEmail, 'partner', `partner:${o.id}`, `${c.name} signed you up for NDURE Labs`, `${c.name} added you as training partner. Before you ride, please do the readiness check and give your consent here: book.ndure.dk/consent/[link]`);
+      this.send(
+        o.partnerEmail,
+        'partner',
+        `partner:${o.id}`,
+        `${c.name} signed you up for NDURE Labs`,
+        `${c.name} added you as training partner for a lactate session at NDURE Labs.\n\nBefore you ride, please do the readiness check and give your consent here: book.ndure.dk/consent/${o.partnerToken}`
+      );
+    }
+    if (late) {
+      this.alert(
+        'late_payment',
+        `A payment arrived after the seat hold ran out: ${c.name} (${c.email}), ${this.money(o.total)}, order ${o.id}. ${o.firstStart ? (o.firstStatus === 'booked' ? 'The picked session was still free and is booked.' : 'The picked session was gone, the rider was asked to pick another time.') : 'The sessions are in the account.'}`
+      );
     }
     return o;
   }
@@ -275,6 +363,33 @@ export class Labs {
     if (o.status !== 'pending') return;
     o.status = 'expired';
     this.db.holds = this.db.holds.filter((h) => h.orderId !== o.id);
+  }
+
+  // ---------- training partner consent ----------
+  private partnerOrder(token: string): Order {
+    const t = clean(token, 64);
+    const o = t.length >= 16 ? this.db.orders.find((x) => x.partnerToken === t && x.status === 'paid') : undefined;
+    if (!o) throw new LabsError('This link is not valid. Ask the rider who signed you up, or email contact@ndure.dk.', 'partner_link');
+    return o;
+  }
+
+  partnerInvite(token: string) {
+    const o = this.partnerOrder(token);
+    const b = this.db.bookings.find((x) => x.orderId === o.id && x.withPartner && x.status !== 'cancelled');
+    return { partnerName: o.partnerName, riderName: this.customer(o.customerId).name.split(' ')[0], start: b?.start ?? null, done: !!o.partnerConsents };
+  }
+
+  partnerConsent(token: string, input: { consents: Partial<Record<ConsentKey, boolean>>; phone?: string }) {
+    const o = this.partnerOrder(token);
+    const given = (input.consents && typeof input.consents === 'object' ? input.consents : {}) as Partial<Record<ConsentKey, boolean>>;
+    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick the readiness check, data consent and terms.', 'consent');
+    o.partnerConsents = {
+      at: this.iso(),
+      version: CONSENT_VERSION,
+      items: Object.fromEntries((Object.keys(CONSENT_TEXT) as ConsentKey[]).map((k) => [k, given[k] === true])) as Record<ConsentKey, boolean>
+    };
+    o.partnerPhone = clean(input.phone, LIMITS.phone) || null;
+    return o;
   }
 
   // ---------- credits ----------
@@ -357,6 +472,7 @@ export class Labs {
     b.label = def.block.label;
     // A moved session gets a fresh reminder.
     this.db.emails = this.db.emails.filter((e) => e.key !== `reminder:${b.id}`);
+    this.db.done = this.db.done.filter((k) => k !== `reminder:${b.id}`);
     const c = this.customer(b.customerId);
     this.send(c.email, 'rescheduled', `moved:${b.id}:${def.start}`, `Moved to ${when(def.start)}`, `Your session moved from ${when(old)} to ${when(def.start)}. The calendar invite is updated.`);
     return b;
@@ -397,16 +513,16 @@ export class Labs {
 
   // ---------- team tools ----------
   giveSessions(input: { email: string; name: string; qty: number; note?: string }): Order {
-    const email = input.email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new LabsError('Fill in a valid email address.', 'email');
+    const email = cleanEmail(input.email);
+    if (!email) throw new LabsError('Fill in a valid email address.', 'email');
     let c = this.customerByEmail(email);
     if (!c) {
-      c = { id: this.id('c'), email, name: input.name.trim() || email, phone: null, ftp: null, goal: null, createdAt: this.iso(), consents: null };
+      c = { id: this.id('c'), email, name: clean(input.name, LIMITS.name) || email, phone: null, ftp: null, goal: null, createdAt: this.iso(), consents: null, sv: 0 };
       this.db.customers.push(c);
     }
     const o: Order = {
       id: this.id('o'), customerId: c.id, status: 'pending', qty: input.qty, unit: 0, total: 0, remaining: 0,
-      partner: false, partnerName: null, partnerEmail: null, partnerUsed: false, free: true, src: input.note || 'team',
+      partner: false, partnerName: null, partnerEmail: null, partnerUsed: false, free: true, src: clean(input.note, LIMITS.src) || 'team',
       createdAt: this.iso(), paidAt: null, expiresAt: null, firstStart: null, firstStatus: 'none'
     };
     this.db.orders.push(o);
@@ -428,34 +544,85 @@ export class Labs {
   }
 
   closeDay(date: string, reason: string) {
-    if (!this.db.closed.some((c) => c.date === date)) this.db.closed.push({ date, reason });
+    const d = clean(date, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new LabsError('Pick a date.', 'date');
+    if (!this.db.closed.some((c) => c.date === d)) this.db.closed.push({ date: d, reason: clean(reason, LIMITS.reason) });
   }
 
   // ---------- login with an emailed code ----------
-  requestLogin(email: string, makeCode: () => string): void {
-    const e = email.trim().toLowerCase();
-    const c = this.customerByEmail(e);
-    // Same answer whether or not the email exists, so nobody can test which emails are customers.
-    if (!c) return;
-    const recent = this.db.emails.filter((m) => m.to === e && m.template === 'login_code' && Date.parse(m.at) > this.now() - hours(1));
-    if (recent.length >= 5) throw new LabsError('Too many codes requested. Try again in an hour.', 'rate');
-    const code = makeCode();
-    this.db.codes = this.db.codes.filter((x) => x.email !== e);
-    this.db.codes.push({ email: e, code, expiresAt: this.iso(this.now() + this.config.loginCodeMinutes * 60_000), attempts: 0 });
-    this.send(e, 'login_code', `code:${e}:${this.now()}`, `Your NDURE Labs code: ${code}`, `Your login code is ${code}. It works once and expires in ${this.config.loginCodeMinutes} minutes. If you didn't ask for it, ignore this email.`);
+  // Riders and team share the rules: at most 5 codes an hour, 5 tries per code,
+  // and an account locks for 24 hours after 10 wrong codes.
+  private recentFails(key: string) {
+    const cut = this.now() - hours(24);
+    this.db.fails = this.db.fails.filter((f) => Date.parse(f.since) > cut);
+    return this.db.fails.find((f) => f.key === key);
   }
 
-  verifyLogin(email: string, code: string): Customer {
-    const e = email.trim().toLowerCase();
-    const rec = this.db.codes.find((x) => x.email === e);
+  private issueCode(key: string, to: string, emailKey: string, subject: (code: string) => string, body: (code: string) => string, makeCode: () => string) {
+    const recent = this.db.emails.filter((m) => m.to === to && m.template === 'login_code' && Date.parse(m.at) > this.now() - hours(1));
+    if (recent.length >= 5) throw new LabsError('Too many codes requested. Try again in an hour.', 'rate');
+    if ((this.recentFails(key)?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email contact@ndure.dk.', 'locked');
+    const code = makeCode();
+    this.db.codes = this.db.codes.filter((x) => x.email !== key);
+    this.db.codes.push({ email: key, code, expiresAt: this.iso(this.now() + this.config.loginCodeMinutes * 60_000), attempts: 0 });
+    this.send(to, 'login_code', emailKey, subject(code), body(code));
+  }
+
+  private checkCode(key: string, code: string) {
+    const f = this.recentFails(key);
+    if ((f?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email contact@ndure.dk.', 'locked');
+    const rec = this.db.codes.find((x) => x.email === key);
     if (!rec || Date.parse(rec.expiresAt) <= this.now()) throw new LabsError('That code has expired. Ask for a new one.', 'code_expired');
     if (rec.attempts >= this.config.loginMaxAttempts) throw new LabsError('Too many wrong tries. Ask for a new code.', 'code_locked');
-    if (rec.code !== code.trim()) {
+    if (rec.code !== clean(code, LIMITS.code)) {
       rec.attempts += 1;
+      if (f) f.n += 1;
+      else this.db.fails.push({ key, n: 1, since: this.iso() });
       throw new LabsError('That code is not right.', 'code_wrong');
     }
     this.db.codes = this.db.codes.filter((x) => x !== rec);
-    return this.customerByEmail(e)!;
+    this.db.fails = this.db.fails.filter((x) => x.key !== key);
+  }
+
+  requestLogin(email: string, makeCode: () => string): void {
+    const e = cleanEmail(email);
+    // Same answer whether or not the email exists, so nobody can test which emails are customers.
+    if (!e || !this.customerByEmail(e)) return;
+    this.issueCode(
+      e, e, `code:${e}:${this.now()}`,
+      (code) => `Your NDURE Labs code: ${code}`,
+      (code) => `Your login code is ${code}. It works once and expires in ${this.config.loginCodeMinutes} minutes. If you didn't ask for it, ignore this email.`,
+      makeCode
+    );
+  }
+
+  verifyLogin(email: string, code: string): Customer {
+    const e = cleanEmail(email);
+    if (!e) throw new LabsError('That code has expired. Ask for a new one.', 'code_expired');
+    this.checkCode(e, code);
+    const c = this.customerByEmail(e);
+    if (!c) throw new LabsError('That code has expired. Ask for a new one.', 'code_expired');
+    c.verified = true;
+    return c;
+  }
+
+  // The caller checks that the email is on the team list.
+  requestTeamLogin(email: string, makeCode: () => string): void {
+    const e = cleanEmail(email);
+    if (!e) return;
+    this.issueCode(
+      `team:${e}`, e, `teamcode:${e}:${this.now()}`,
+      (code) => `NDURE Labs team code: ${code}`,
+      (code) => `Your team login code is ${code}. It expires in ${this.config.loginCodeMinutes} minutes.`,
+      makeCode
+    );
+  }
+
+  verifyTeamLogin(email: string, code: string): string {
+    const e = cleanEmail(email);
+    if (!e) throw new LabsError('That code has expired. Ask for a new one.', 'code_expired');
+    this.checkCode(`team:${e}`, code);
+    return e;
   }
 
   // ---------- what a rider sees ----------
@@ -506,7 +673,7 @@ export class Labs {
         `DTSTAMP:${stamp(b.createdAt)}`,
         `DTSTART:${stamp(new Date(b.start).toISOString())}`,
         `DTEND:${stamp(b.end)}`,
-        `SUMMARY:Labs: ${c.name}${b.withPartner ? ` + ${b.partnerName}` : ''}`,
+        `SUMMARY:${icsText(`Labs: ${c.name}${b.withPartner ? ` + ${b.partnerName}` : ''}`)}`,
         'LOCATION:Diplomvej 376\\, 2800 Kongens Lyngby',
         'END:VEVENT'
       );
@@ -521,13 +688,14 @@ export class Labs {
     const now = this.now();
     const E = this.config.emails;
 
-    // Payment windows that closed: release their seats.
+    // Payment windows that closed: release their seats. A late payment is still credited (see paid).
     for (const o of this.db.orders) {
-      if (o.status === 'pending' && o.firstStart && !this.db.holds.some((h) => h.orderId === o.id && Date.parse(h.expiresAt) > now)) {
-        this.checkoutExpired(o.id);
-      }
+      if (o.status !== 'pending') continue;
+      const holdGone = !!o.firstStart && !this.db.holds.some((h) => h.orderId === o.id && Date.parse(h.expiresAt) > now);
+      if (holdGone || now - Date.parse(o.createdAt) > hours(UNPAID_EXPIRE_HOURS)) this.checkoutExpired(o.id);
     }
     this.db.holds = this.db.holds.filter((h) => Date.parse(h.expiresAt) > now);
+    this.cleanUp();
 
     for (const b of this.db.bookings) {
       const c = this.customer(b.customerId);
@@ -570,6 +738,29 @@ export class Labs {
       }
     }
     return this.db.emails.slice(before);
+  }
+
+  // Keeps the stored data small: removes what is no longer needed.
+  cleanUp() {
+    const now = this.now();
+    // Unpaid checkouts, and riders who never paid for anything.
+    const orderCut = now - days(EXPIRED_ORDER_KEEP_DAYS);
+    const booked = new Set(this.db.bookings.map((b) => b.orderId));
+    this.db.orders = this.db.orders.filter((o) => !(o.status === 'expired' && Date.parse(o.createdAt) < orderCut && !booked.has(o.id)));
+    const active = new Set([...this.db.orders.map((o) => o.customerId), ...this.db.bookings.map((b) => b.customerId)]);
+    this.db.customers = this.db.customers.filter((c) => active.has(c.id) || Date.parse(c.createdAt) > orderCut);
+    // Old emails: keep only their key, so an automatic email never goes out twice.
+    const emailCut = now - days(EMAIL_KEEP_DAYS);
+    const keep: Email[] = [];
+    for (const e of this.db.emails) {
+      if ((e.sent || e.failed) && Date.parse(e.at) < emailCut) {
+        if (!e.key.startsWith('code:') && !e.key.startsWith('teamcode:') && !this.db.done.includes(e.key)) this.db.done.push(e.key);
+      } else keep.push(e);
+    }
+    this.db.emails = keep;
+    this.db.codes = this.db.codes.filter((c) => Date.parse(c.expiresAt) > now);
+    this.db.fails = this.db.fails.filter((f) => Date.parse(f.since) > now - hours(24));
+    this.db.alerts = this.db.alerts.filter((a) => !a.sent || Date.parse(a.at) > now - days(90));
   }
 
   money(n: number) {

@@ -1,7 +1,7 @@
 // Pages for book.ndure.dk: sign up (/), rider account (/account), team (/team).
 // Functional MVP: plain layout, real data from the server. Design comes later.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { quote, type Slot } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
@@ -27,6 +27,39 @@ async function api<T = any>(path: string, body?: unknown): Promise<T> {
 type Note = { kind: 'ok' | 'err'; text: string } | null;
 function NoteBox({ note }: { note: Note }) {
   return note ? <div className={`note ${note.kind}`} role="status">{note.text}</div> : null;
+}
+
+// Cloudflare Turnstile, the bot check. Shows nothing until the team switches it on.
+type PublicConfig = { consents: Record<ConsentKey, string>; required: ConsentKey[]; turnstileSiteKey: string | null };
+let configPromise: Promise<PublicConfig> | null = null;
+const getConfig = () => (configPromise ??= api<PublicConfig>('/api/config'));
+
+function Turnstile({ siteKey, onToken }: { siteKey: string | null; onToken: (t: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!siteKey || !ref.current) return;
+    const w = window as any;
+    let id: string | undefined;
+    const render = () => {
+      id = w.turnstile.render(ref.current, { sitekey: siteKey, callback: onToken, 'expired-callback': () => onToken(''), 'error-callback': () => onToken('') });
+    };
+    if (w.turnstile) render();
+    else {
+      let s = document.getElementById('cf-turnstile') as HTMLScriptElement | null;
+      if (!s) {
+        s = document.createElement('script');
+        s.id = 'cf-turnstile';
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+        s.async = true;
+        document.head.appendChild(s);
+      }
+      s.addEventListener('load', render);
+    }
+    return () => {
+      try { if (id) w.turnstile.remove(id); } catch { /* already gone */ }
+    };
+  }, [siteKey]);
+  return siteKey ? <div ref={ref} className="turnstile" /> : null;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -94,7 +127,9 @@ function SlotPicker({ slots, value, onChange, need }: { slots: Slot[] | null; va
 // ---------------- sign up ----------------
 function SignUp() {
   const params = new URLSearchParams(location.search);
-  const [cfg, setCfg] = useState<{ consents: Record<ConsentKey, string>; required: ConsentKey[] } | null>(null);
+  const [cfg, setCfg] = useState<PublicConfig | null>(null);
+  const [human, setHuman] = useState('');
+  const [tsRound, setTsRound] = useState(0); // a bot check token works once: show a fresh check after a failed try
   const [step, setStep] = useState(1);
   const [qty, setQty] = useState(Math.min(10, Math.max(1, Number(params.get('qty')) || 1)));
   const [partner, setPartner] = useState(params.get('partner') === '1');
@@ -114,7 +149,7 @@ function SignUp() {
     setSlots(null);
     api<{ slots: Slot[] }>(`/api/slots?need=${need}`).then((d) => setSlots(d.slots)).catch((e) => setNote({ kind: 'err', text: e.message }));
   }, [need]);
-  useEffect(() => { api('/api/config').then(setCfg); }, []);
+  useEffect(() => { getConfig().then(setCfg).catch((e) => setNote({ kind: 'err', text: e.message })); }, []);
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
   async function pay() {
@@ -123,13 +158,15 @@ function SignUp() {
     try {
       const d = await api<{ url: string }>('/api/checkout', {
         qty, partner, partnerName: pName, partnerEmail: pEmail, start: later ? null : start, later,
-        name: f.name, email: f.email, phone: f.phone, ftp: f.ftp ? Number(f.ftp) : null, goal: f.goal, consents, src: params.get('src') || 'web'
+        name: f.name, email: f.email, phone: f.phone, ftp: f.ftp ? Number(f.ftp) : null, goal: f.goal, consents, src: params.get('src') || 'web', turnstile: human
       });
       location.href = d.url;
     } catch (e) {
       const err = e as ApiError;
       setNote({ kind: 'err', text: err.message });
       if (err.status === 409) { setStart(null); loadSlots(); setStep(2); }
+      setHuman('');
+      setTsRound((n) => n + 1);
       setBusy(false);
     }
   }
@@ -158,8 +195,8 @@ function SignUp() {
               <label className="check"><input type="checkbox" checked={partner} onChange={() => { setPartner(!partner); setStart(null); }} /> Bring a training partner to my first session ({eur(DEFAULT_CONFIG.partnerPrice)})</label>
               {partner && (
                 <div className="row">
-                  <label>Partner name<input value={pName} onChange={(e) => setPName(e.target.value)} /></label>
-                  <label>Partner email<input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} /></label>
+                  <label>Partner name<input maxLength={80} value={pName} onChange={(e) => setPName(e.target.value)} /></label>
+                  <label>Partner email<input type="email" maxLength={254} value={pEmail} onChange={(e) => setPEmail(e.target.value)} /></label>
                 </div>
               )}
               <button className="primary" onClick={() => setStep(2)}>Choose a date</button>
@@ -182,9 +219,9 @@ function SignUp() {
             <form className="stack" onSubmit={(e) => { e.preventDefault(); pay(); }}>
               <h1>Your details</h1>
               <div className="row">
-                <label>Full name<input id="name" required autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-                <label>Email<input id="email" required type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
-                <label>Phone<input id="phone" autoComplete="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
+                <label>Full name<input id="name" required maxLength={80} autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+                <label>Email<input id="email" required maxLength={254} type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+                <label>Phone<input id="phone" maxLength={30} autoComplete="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
                 <label>FTP (optional)<input id="ftp" inputMode="numeric" value={f.ftp} onChange={(e) => setF({ ...f, ftp: e.target.value })} /></label>
                 <label>Goal
                   <select id="goal" value={f.goal} onChange={(e) => setF({ ...f, goal: e.target.value })}>
@@ -203,9 +240,10 @@ function SignUp() {
                   ))}
                 </fieldset>
               )}
+              <Turnstile key={tsRound} siteKey={cfg?.turnstileSiteKey ?? null} onToken={setHuman} />
               <div className="row">
                 <button type="button" onClick={() => setStep(2)}>Back</button>
-                <button className="primary" type="submit" disabled={busy}>{busy ? 'Opening payment…' : `Pay ${eur(q.total)}`}</button>
+                <button className="primary" type="submit" disabled={busy || (!!cfg?.turnstileSiteKey && !human)}>{busy ? 'Opening payment…' : `Pay ${eur(q.total)}`}</button>
               </div>
             </form>
           )}
@@ -222,28 +260,79 @@ function SignUp() {
 }
 
 // ---------------- login ----------------
-function Login({ team, onDone }: { team: boolean; onDone: () => void }) {
+function Login({ team, onDone, intro }: { team: boolean; onDone: () => void; intro?: Note }) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
-  const [note, setNote] = useState<Note>(null);
+  const [note, setNote] = useState<Note>(intro ?? null);
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [human, setHuman] = useState('');
+  const [tsRound, setTsRound] = useState(0);
+  useEffect(() => { getConfig().then((c) => setSiteKey(c.turnstileSiteKey)).catch(() => {}); }, []);
+  const request = () =>
+    api('/api/login/request', { email, team, turnstile: human })
+      .then(() => { setSent(true); setNote({ kind: 'ok', text: 'If that email has an account, a code is on its way.' }); })
+      .catch((e) => { setNote({ kind: 'err', text: e.message }); setHuman(''); setTsRound((n) => n + 1); });
   return (
     <section className="card narrow">
       <h1>{team ? 'Team login' : 'Log in'}</h1>
       <p className="muted">{team ? 'Team members only.' : 'Use the email you signed up with.'} We email you a 6 digit code.</p>
       <NoteBox note={note} />
-      <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label>Email<input type="email" maxLength={254} autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
       {!sent ? (
-        <button className="primary" onClick={() => api('/api/login/request', { email, team }).then(() => { setSent(true); setNote({ kind: 'ok', text: 'If that email has an account, a code is on its way.' }); }).catch((e) => setNote({ kind: 'err', text: e.message }))}>Send code</button>
+        <>
+          <Turnstile key={tsRound} siteKey={siteKey} onToken={setHuman} />
+          <button className="primary" disabled={!!siteKey && !human} onClick={request}>Send code</button>
+        </>
       ) : (
         <>
-          <label>Code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+          <label>Code<input inputMode="numeric" maxLength={12} autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>
           <div className="row">
             <button className="primary" onClick={() => api('/api/login/verify', { email, code, team }).then(onDone).catch((e) => setNote({ kind: 'err', text: e.message }))}>Log in</button>
-            <button onClick={() => { setSent(false); setCode(''); }}>Use another email</button>
+            <button onClick={() => { setSent(false); setCode(''); setHuman(''); setTsRound((n) => n + 1); }}>Use another email</button>
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+// After paying, in a browser that is not logged in: wait for the payment, then log in.
+type OrderStatus = { status: string; firstStatus: string; firstStart: string | null; newRider: boolean };
+function AfterPayment({ orderId, onLoggedIn }: { orderId: string; onLoggedIn: () => void }) {
+  const [st, setSt] = useState<OrderStatus | null>(null);
+  const [gone, setGone] = useState(false);
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    let stop = false;
+    const check = async () => {
+      try {
+        const d = await api<OrderStatus>(`/api/order-status?id=${encodeURIComponent(orderId)}`);
+        if (stop) return;
+        setSt(d);
+        if (d.status === 'paid' && d.newRider) onLoggedIn();
+      } catch {
+        if (!stop) setGone(true);
+      }
+      setTries((n) => n + 1);
+    };
+    check();
+    const t = setInterval(() => { if (!stop) check(); }, 2000);
+    return () => { stop = true; clearInterval(t); };
+  }, [orderId]);
+  if (gone || st?.status === 'paid') {
+    return <Login team={false} onDone={onLoggedIn} intro={st?.status === 'paid' ? { kind: 'ok', text: 'Payment received. Log in with your email to see and book your sessions.' } : null} />;
+  }
+  if (st && st.status !== 'pending') {
+    return <section className="card narrow"><h1>Payment not completed</h1><p className="muted">Nothing was charged. <a href="/">Start again</a>.</p></section>;
+  }
+  return (
+    <section className="card narrow">
+      <h1>One moment</h1>
+      <p className="muted">
+        {st?.firstStart ? `Confirming your payment and your session on ${when(st.firstStart)}.` : 'Confirming your payment.'} This page updates by itself.
+        {tries > 30 ? ' This is taking longer than usual. You will get an email as soon as the payment is confirmed.' : ''}
+      </p>
     </section>
   );
 }
@@ -313,7 +402,7 @@ function Account() {
     setBusy(false);
   }
 
-  if (needLogin) return <Shell><Login team={false} onDone={load} /></Shell>;
+  if (needLogin) return <Shell>{paidId ? <AfterPayment orderId={paidId} onLoggedIn={load} /> : <Login team={false} onDone={load} />}</Shell>;
   if (!a) return <Shell><NoteBox note={note} /><p className="muted">Loading…</p></Shell>;
   if (waiting) {
     return (
@@ -336,7 +425,10 @@ function Account() {
         <section className="card">
           <div className="row spread">
             <h1>Hi {a.customer.name.split(' ')[0]}</h1>
-            <button className="ghost" onClick={() => api('/api/logout', {}).then(() => { setA(null); setNeedLogin(true); })}>Log out</button>
+            <span className="row">
+              <button className="ghost" onClick={() => api('/api/logout', {}).then(() => { setA(null); setNeedLogin(true); })}>Log out</button>
+              <button className="ghost" onClick={() => api('/api/me/logout-all', {}).then(() => { setA(null); setNeedLogin(true); })}>Log out on all devices</button>
+            </span>
           </div>
 
           <h3>Upcoming</h3>
@@ -401,10 +493,13 @@ type TeamRow = Booking & { customer: Customer; order: Order };
 type TeamData = {
   me: string;
   days: { date: string; list: TeamRow[] }[];
-  riders: { id: string; name: string; email: string; phone: string | null; balance: number; next: string | null; last: string | null; lastPaidOrder: string | null }[];
+  riders: { id: string; name: string; email: string; phone: string | null; balance: number; next: string | null; last: string | null; src: string | null; lastPaidOrder: string | null }[];
   closed: { date: string; reason: string }[];
   calendarUrl: string;
-  emailErrors: { to: string; subject: string; error: string }[];
+  emailErrors: { to: string; subject: string; error: string; gaveUp: boolean }[];
+  status: { bytes: number; limit: number; lastJob: string | null; emailsWaiting: number; emailsToday: number; riders: number; openCheckouts: number };
+  alerts: { at: string; kind: string; text: string }[];
+  audit: { at: string; by: string; action: string; detail: string }[];
 };
 
 function Team() {
@@ -455,10 +550,16 @@ function Team() {
     <Shell>
       <NoteBox note={note} />
       {t.emailErrors.length > 0 && (
-        <div className="note err">Some emails could not be sent: {t.emailErrors.map((e) => `${e.subject} to ${e.to}`).join('; ')}. Check the Brevo key and sender.</div>
+        <div className="note err">Some emails could not be sent{t.emailErrors.some((e) => !e.gaveUp) ? ' (retrying automatically)' : ''}: {t.emailErrors.map((e) => `${e.subject} to ${e.to}${e.gaveUp ? ' (gave up)' : ''}`).join('; ')}. Check the Brevo key, sender and daily limit.</div>
       )}
       <section className="card">
-        <div className="row spread"><h1>Upcoming sessions</h1><span className="muted small">Logged in as {t.me}</span></div>
+        <div className="row spread">
+          <h1>Upcoming sessions</h1>
+          <span className="row muted small">Logged in as {t.me}
+            <button className="ghost" onClick={() => api('/api/logout', {}).then(() => { setT(null); setNeedLogin(true); })}>Log out</button>
+            <button className="ghost" onClick={() => api('/api/team/logout-all', {}).then(() => { setT(null); setNeedLogin(true); })}>Log out on all devices</button>
+          </span>
+        </div>
         {t.days.length === 0 && <p className="muted">Nothing booked yet.</p>}
         {t.days.map(({ date, list }) => (
           <div key={date}>
@@ -476,7 +577,7 @@ function Team() {
                         <td><b>{r.customer.name}</b>{r.withPartner && <><br />+ {r.partnerName}</>}</td>
                         <td>{r.customer.email}<br />{r.customer.phone}</td>
                         <td>{r.customer.ftp ? `${r.customer.ftp} W` : 'n/a'}<br /><span className="muted">{r.customer.goal}</span></td>
-                        <td>{cs?.health ? 'Health ok' : <b>Missing</b>}{cs?.film ? ', film ok' : ''}{cs?.research ? ', R&D ok' : ''}</td>
+                        <td>{cs?.health ? 'Health ok' : <b>Missing</b>}{cs?.film ? ', film ok' : ''}{cs?.research ? ', R&D ok' : ''}{r.withPartner && <><br />Partner: {r.order.partnerConsents?.items.health ? 'ok' : <b>missing</b>}</>}</td>
                         <td>{{ booked: 'Booked', attended: 'Attended', no_show: 'No show', cancelled: 'Cancelled' }[r.status]}</td>
                         <td className="actions">
                           {started && r.status === 'booked' && (
@@ -522,11 +623,11 @@ function Team() {
         <h2>Riders</h2>
         <div className="scroll">
           <table className="team">
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Sessions left</th><th>Next</th><th>Last</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Sessions left</th><th>Next</th><th>Last</th><th></th></tr></thead>
             <tbody>
               {t.riders.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.name}</td><td>{c.email}</td><td>{c.phone}</td><td>{c.balance}</td>
+                  <td>{c.name}</td><td>{c.email}</td><td>{c.phone}</td><td className="muted">{c.src}</td><td>{c.balance}</td>
                   <td>{c.next ? when(c.next) : <span className="muted">none</span>}</td>
                   <td>{c.last ? when(c.last) : ''}</td>
                   <td className="actions">{c.lastPaidOrder && <button onClick={() => act({ action: 'refund', orderId: c.lastPaidOrder }, 'Order closed. Now refund the money in Stripe.')}>Close last order</button>}</td>
@@ -561,6 +662,26 @@ function Team() {
       </div>
 
       <section className="card">
+        <h3>System status</h3>
+        <p className="small">
+          Data {Math.round(t.status.bytes / 1000)} KB of {Math.round(t.status.limit / 1000)} KB{t.status.bytes > t.status.limit / 2 ? <b> (getting large)</b> : ''} ·
+          last automatic run {t.status.lastJob ? `${Math.round((now - Date.parse(t.status.lastJob)) / 60000)} min ago` : <b>never</b>}
+          {t.status.lastJob && now - Date.parse(t.status.lastJob) > 40 * 60000 ? <b> (late)</b> : ''} ·
+          emails sent today {t.status.emailsToday}, waiting {t.status.emailsWaiting} · riders {t.status.riders} · open checkouts {t.status.openCheckouts}
+        </p>
+        <h3>Alerts</h3>
+        {t.alerts.length === 0 && <p className="small muted">None.</p>}
+        {t.alerts.map((a, i) => <p key={i} className="small"><span className="muted">{when(a.at)}</span> <b>{a.kind.replace(/_/g, ' ')}</b>: {a.text}</p>)}
+        <h3>Activity</h3>
+        {t.audit.length === 0 && <p className="small muted">Nothing yet.</p>}
+        <div className="scroll">
+          <table className="team small">
+            <tbody>{t.audit.map((x, i) => <tr key={i}><td className="muted">{when(x.at)}</td><td>{x.by}</td><td>{x.action}</td><td>{x.detail}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
         <h3>Team calendar</h3>
         <p className="small muted">Subscribe once in Outlook (Add calendar → From internet) or Google Calendar (Other calendars → From URL). Keep this link private.</p>
         <code className="small">{t.calendarUrl}</code>
@@ -569,8 +690,44 @@ function Team() {
   );
 }
 
+// ---------------- training partner consent ----------------
+function PartnerConsent() {
+  const token = location.pathname.split('/')[2] || '';
+  const [inv, setInv] = useState<{ partnerName: string; riderName: string; start: string | null; done: boolean; consents: Record<ConsentKey, string>; required: ConsentKey[] } | null>(null);
+  const [consents, setConsents] = useState<Partial<Record<ConsentKey, boolean>>>({});
+  const [phone, setPhone] = useState('');
+  const [note, setNote] = useState<Note>(null);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    api(`/api/partner?t=${encodeURIComponent(token)}`).then((d) => { setInv(d); setDone(d.done); }).catch((e) => setNote({ kind: 'err', text: e.message }));
+  }, [token]);
+  if (!inv) return <Shell><NoteBox note={note} />{!note && <p className="muted">Loading…</p>}</Shell>;
+  if (done) return <Shell><section className="card narrow"><h1>Thanks, {inv.partnerName}</h1><p className="muted">Your consent is saved.{inv.start ? ` See you ${when(inv.start)} at Diplomvej 376, Kongens Lyngby.` : ''}</p></section></Shell>;
+  return (
+    <Shell>
+      <section className="card narrow">
+        <h1>Hi {inv.partnerName}</h1>
+        <p className="muted">{inv.riderName} signed you up as training partner for a lactate session{inv.start ? ` on ${when(inv.start)}` : ''}. Please confirm the points below before you ride.</p>
+        <NoteBox note={note} />
+        <label>Phone (optional)<input maxLength={30} autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+        <fieldset>
+          <legend>Consent</legend>
+          {(Object.keys(inv.consents) as ConsentKey[]).map((k) => (
+            <label key={k} className="check">
+              <input type="checkbox" checked={!!consents[k]} onChange={() => setConsents({ ...consents, [k]: !consents[k] })} />
+              {inv.consents[k]} {inv.required.includes(k) ? <span className="req">required</span> : null}
+            </label>
+          ))}
+        </fieldset>
+        <button className="primary" onClick={() => api('/api/partner', { t: token, consents, phone }).then(() => setDone(true)).catch((e) => setNote({ kind: 'err', text: e.message }))}>Confirm</button>
+      </section>
+    </Shell>
+  );
+}
+
 function App() {
   const p = location.pathname;
+  if (p.startsWith('/consent/')) return <PartnerConsent />;
   if (p.startsWith('/team')) return <Team />;
   if (p.startsWith('/account')) return <Account />;
   return <SignUp />;

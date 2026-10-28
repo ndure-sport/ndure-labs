@@ -20,8 +20,13 @@
       "database_id": "c5b27b7f-49ff-4b95-ac39-9e33f10b5634"
     }
   ],
-  // Every hour: reminders, follow ups, retest nudges, staff summary, unpaid seats.
-  "triggers": { "crons": ["5 * * * *"] },
+  // Every 15 minutes: reminders, follow ups, retest nudges, staff summary, unpaid seats, alerts.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // Per IP limits on the public forms (approximate, per Cloudflare location).
+  "ratelimits": [
+    { "name": "RL_CHECKOUT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
+    { "name": "RL_LOGIN", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
+  ],
   "vars": {
     "APP_URL": "https://ndure-labs.arthur-2b2.workers.dev",
     "TEAM_EMAILS": "arthurherbosch@hotmail.com",

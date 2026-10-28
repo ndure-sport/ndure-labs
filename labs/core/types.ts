@@ -12,6 +12,8 @@ export type Customer = {
   goal: string | null;
   createdAt: string;
   consents: Consents | null; // latest consent record
+  sv?: number; // session version: raising it logs this rider out everywhere
+  verified?: boolean; // has logged in with an emailed code at least once
 };
 
 export type Order = {
@@ -33,6 +35,12 @@ export type Order = {
   expiresAt: string | null;
   firstStart: string | null; // session picked before paying
   firstStatus: 'none' | 'pending' | 'booked' | 'failed';
+  newCustomer?: boolean; // the rider was created by this checkout (only then may it log a browser in)
+  consents?: Consents | null; // what the buyer agreed to in this checkout
+  partnerToken?: string | null; // private link for the partner's own consent
+  partnerConsents?: Consents | null;
+  partnerPhone?: string | null;
+  late?: boolean; // payment confirmed after the seat hold had run out
 };
 
 export type Booking = {
@@ -65,9 +73,22 @@ export type Email = {
   at: string;
   sent?: boolean; // set once the email provider accepted it
   error?: string;
+  tries?: number;
+  nextAt?: string; // earliest next try after a failure
+  claimUntil?: string; // a sender is working on it until then
+  failed?: boolean; // gave up after too many tries
 };
 
+// Something the team should know about (late payment, emails failing, data growing).
+export type Alert = { id: string; at: string; kind: string; text: string; sent?: boolean; tries?: number; claimUntil?: string };
+
+// Who did what. `by` is a team email, "rider:<email>", "stripe" or "system".
+export type AuditEntry = { at: string; by: string; action: string; detail: string };
+
 export type LoginCode = { email: string; code: string; expiresAt: string; attempts: number };
+
+// Wrong login codes per account over the last 24 hours.
+export type LoginFails = { key: string; n: number; since: string };
 
 export type ClosedDay = { date: string; reason: string };
 
@@ -80,6 +101,21 @@ export type Db = {
   emails: Email[];
   codes: LoginCode[];
   closed: ClosedDay[];
+  done: string[]; // keys of old sent emails that were cleaned up, so they never go out again
+  alerts: Alert[];
+  audit: AuditEntry[];
+  fails: LoginFails[];
+  teamSv: Record<string, number>; // session version per team email
 };
 
-export const emptyDb = (): Db => ({ seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [] });
+export const emptyDb = (): Db => ({
+  seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [],
+  done: [], alerts: [], audit: [], fails: [], teamSv: {}
+});
+
+// Fills in fields added after the data was first saved.
+export function upgradeDb(db: Partial<Db>): Db {
+  const fresh = emptyDb();
+  for (const k of Object.keys(fresh) as (keyof Db)[]) if (db[k] === undefined) (db as any)[k] = fresh[k];
+  return db as Db;
+}

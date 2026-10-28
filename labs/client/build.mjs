@@ -40,4 +40,16 @@ writeFileSync(
 </html>
 `
 );
+// Security headers for the pages (the Worker sets its own for /api). Cloudflare reads this file.
+writeFileSync(
+  path.join(out, '_headers'),
+  `/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+`
+);
 console.log('Pages built into public/');

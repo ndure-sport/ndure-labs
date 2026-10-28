@@ -56,3 +56,16 @@ export async function verifyStripe(env: Env, body: string, header: string | null
   const given = header.split(',').filter((p) => p.startsWith('v1=')).map((p) => p.slice(3));
   return given.some((g) => g.length === expected.length && g === expected);
 }
+
+// Order ids of Checkout sessions Stripe marks as paid since `sinceSec` (unix seconds).
+// Used every 15 minutes to catch payments whose webhook never arrived.
+export async function paidCheckoutOrders(env: Env, sinceSec: number): Promise<string[]> {
+  if (!env.STRIPE_SECRET_KEY) return [];
+  const q = new URLSearchParams({ limit: '100', status: 'complete', 'created[gte]': String(sinceSec) });
+  const res = await fetch(`${env.STRIPE_API_BASE || 'https://api.stripe.com'}/v1/checkout/sessions?${q}`, {
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` }
+  });
+  const data = (await res.json()) as { data?: { payment_status?: string; metadata?: { order_id?: string } }[]; error?: { message: string } };
+  if (!res.ok || !data.data) throw new Error(`Stripe list: ${data.error?.message || res.status}`);
+  return data.data.filter((x) => x.payment_status === 'paid' && x.metadata?.order_id).map((x) => x.metadata!.order_id!);
+}
