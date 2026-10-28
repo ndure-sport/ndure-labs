@@ -56,12 +56,14 @@ async function allowed(limiter: RateLimit | undefined, key: string) {
   }
 }
 
-// Cloudflare Turnstile, the invisible bot check. Only enforced once its secret is set.
+// Cloudflare Turnstile, the invisible bot check. Only enforced once both keys are set,
+// so the pages always show the check whenever the server asks for it.
+const turnstileOn = (env: Env) => !!(env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY);
 async function human(env: Env, token: unknown, ip: string) {
-  if (!env.TURNSTILE_SECRET_KEY) return true;
+  if (!turnstileOn(env)) return true;
   if (typeof token !== 'string' || !token || token.length > 4096) return false;
   const f = new FormData();
-  f.set('secret', env.TURNSTILE_SECRET_KEY);
+  f.set('secret', env.TURNSTILE_SECRET_KEY!);
   f.set('response', token);
   if (ip) f.set('remoteip', ip);
   try {
@@ -118,7 +120,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
       changeDeadlineHours: config.changeDeadlineHours,
       consents: CONSENT_TEXT,
       required: REQUIRED_CONSENTS,
-      turnstileSiteKey: env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY || null : null
+      turnstileSiteKey: turnstileOn(env) ? env.TURNSTILE_SITE_KEY! : null
     });
   }
 

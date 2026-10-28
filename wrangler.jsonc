@@ -30,7 +30,9 @@
     "TEAM_EMAILS": "arthurherbosch@hotmail.com",
     "EMAIL_FROM_NAME": "NDURE Labs",
     "EMAIL_FROM_ADDRESS": "labs@ndure.dk",
-    "CURRENCY": "eur"
+    "CURRENCY": "eur",
+    // Public key of the Turnstile bot check. The check switches on once TURNSTILE_SECRET_KEY is set too.
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFpeN7V8Vhq26NSw"
   },
   "observability": { "enabled": true }
 }
