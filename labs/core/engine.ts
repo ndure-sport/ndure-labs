@@ -182,7 +182,9 @@ export class Labs {
     const ms = Date.parse(start);
     if (ms <= this.now()) throw new LabsError('That session has already started.', 'past');
     if (!opts.team && ms < this.now() + hours(this.config.minNoticeHours)) {
-      throw new LabsError(`Sessions can be booked up to ${this.config.minNoticeHours} hours before they start.`, 'too_soon');
+      const h = this.config.minNoticeHours;
+      const notice = h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
+      throw new LabsError(`Sessions need to be booked at least ${notice} ahead.`, 'too_soon');
     }
     const free = def.block.capacity - this.takenAt(start, opts);
     if (free < need) {

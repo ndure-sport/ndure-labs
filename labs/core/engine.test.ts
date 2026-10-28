@@ -6,9 +6,11 @@ import { emptyDb } from './types.ts';
 import { days, hours } from './time.ts';
 
 // A fixed clock: Monday 30 November 2026, 10:00 Copenhagen.
-function setup() {
+// Most tests book close to "now", so they run with a short notice period; the 1 week rule has its own test.
+const TEST_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12 };
+function setup(config = TEST_CONFIG) {
   let now = Date.parse('2026-11-30T10:00:00+01:00');
-  const labs = new Labs(emptyDb(), DEFAULT_CONFIG, () => now);
+  const labs = new Labs(emptyDb(), config, () => now);
   const tick = (ms: number) => {
     now += ms;
     return labs.tick();
@@ -327,4 +329,13 @@ test('S1: pressing back and paying again still counts as new; a second payment e
   assert.equal(labs.customerByEmail('new@x.dk')!.sv, sv + 1);
   assert.equal(labs.customerByEmail('new@x.dk')!.name, 'Second Try');
   void first;
+});
+
+test('riders book at least 1 week ahead; the team can book any time', () => {
+  const { labs } = setup(DEFAULT_CONFIG);
+  const first = labs.slots()[0].start;
+  assert.ok(Date.parse(first) >= Date.parse('2026-12-07T10:00:00+01:00'), 'nothing inside the first week');
+  assert.equal(first, '2026-12-08T09:30:00+01:00');
+  assert.throws(() => labs.checkout(rider('soon@x.dk', { start: '2026-12-01T09:30:00+01:00' })), /at least 1 week ahead/);
+  assert.ok(labs.slots(1, { team: true }).some((s) => s.start === '2026-12-01T09:30:00+01:00'));
 });

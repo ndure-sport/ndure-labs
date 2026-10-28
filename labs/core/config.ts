@@ -37,7 +37,7 @@ export const DEFAULT_CONFIG: Config = {
   maxQty: 10,
   validityMonths: 12,
   changeDeadlineHours: 24,
-  minNoticeHours: 12,
+  minNoticeHours: 168, // one week
   bookingWeeksAhead: 8,
   holdMinutes: 35,
   days: [2, 3, 4, 5],
