@@ -11,7 +11,7 @@ export type State = { db: Db; secrets: { session: string; feed: string }; staffS
 export type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
-  APP_URL: string;
+  APP_URL?: string; // not set in branch previews
   TEAM_EMAILS: string;
   EMAIL_FROM_NAME: string;
   EMAIL_FROM_ADDRESS: string;

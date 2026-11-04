@@ -14,6 +14,9 @@ export type Customer = {
   consents: Consents | null; // latest consent record
   sv?: number; // session version: raising it logs this rider out everywhere
   verified?: boolean; // has logged in with an emailed code at least once
+  noReminders?: boolean; // asked not to get check in emails (link in every such email)
+  stopToken?: string; // private part of that link
+  followUpOn?: string | null; // YYYY-MM-DD the team wants to follow up
 };
 
 export type Order = {
@@ -61,13 +64,32 @@ export type Booking = {
   creditReturned: boolean;
 };
 
+// Someone who might book: met at an event, asked for a call, wrote on Instagram.
+export type LeadStatus = 'new' | 'contacted' | 'interested' | 'not_now' | 'booked';
+export type Lead = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  source: string; // where we met them
+  note: string;
+  status: LeadStatus;
+  okToCall: boolean; // they asked us to call or said yes to it (Danish law: no cold calls to private people)
+  followUpOn: string | null; // YYYY-MM-DD
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Every call, email or note about a rider or a lead. Check in emails the system sends land here too.
+export type Contact = { id: string; at: string; by: string; customerId: string | null; leadId: string | null; kind: 'call' | 'email' | 'note'; text: string };
+
 export type Hold = { orderId: string; start: string; seats: number; expiresAt: string };
 
 export type Email = {
   id: string;
   key: string; // makes sure each automatic email goes out once
   to: string;
-  template: 'login_code' | 'payment' | 'confirmation' | 'partner' | 'rescheduled' | 'cancelled' | 'reminder' | 'after' | 'nudge' | 'expiry';
+  template: 'login_code' | 'payment' | 'confirmation' | 'partner' | 'rescheduled' | 'cancelled' | 'reminder' | 'after' | 'nudge' | 'expiry' | 'checkin';
   subject: string;
   body: string;
   at: string;
@@ -106,11 +128,13 @@ export type Db = {
   audit: AuditEntry[];
   fails: LoginFails[];
   teamSv: Record<string, number>; // session version per team email
+  leads: Lead[];
+  contacts: Contact[];
 };
 
 export const emptyDb = (): Db => ({
   seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [],
-  done: [], alerts: [], audit: [], fails: [], teamSv: {}
+  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: []
 });
 
 // Fills in fields added after the data was first saved.

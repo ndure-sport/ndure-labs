@@ -9,6 +9,7 @@ import type { ConsentKey, Booking, Customer, Order } from '../core/types';
 import { api, ApiError, getConfig, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { Landing } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
+import { FollowUp, Contacts, Sales, type CrmData } from './crm';
 
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const time = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
@@ -299,6 +300,7 @@ type TeamData = {
   status: { bytes: number; limit: number; lastJob: string | null; emailsWaiting: number; emailsToday: number; riders: number; openCheckouts: number };
   alerts: { at: string; kind: string; text: string }[];
   audit: { at: string; by: string; action: string; detail: string }[];
+  crm: CrmData;
 };
 
 function Team() {
@@ -311,6 +313,9 @@ function Team() {
   const [pick, setPick] = useState<string | null>(null);
   const [give, setGive] = useState({ email: '', name: '', qty: 1 });
   const [close, setClose] = useState({ date: '', reason: '' });
+  type Tab = 'sessions' | 'follow' | 'contacts' | 'sales' | 'admin';
+  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'follow', 'contacts', 'sales', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
+  const setTab = (x: Tab) => { setTabState(x); setNote(null); history.replaceState(null, '', `/team#${x}`); };
 
   const load = useCallback(async () => {
     try {
@@ -329,15 +334,18 @@ function Team() {
     api<{ slots: Slot[] }>(`/api/team/slots?booking=${move.id}`).then((d) => setSlots(d.slots));
   }, [move]);
 
-  const act = async (payload: object, ok: string) => {
+  const act = async (payload: object, ok: string): Promise<boolean> => {
     setNote(null);
     try {
       setT(await api<TeamData>('/api/team/action', payload));
       setNote({ kind: 'ok', text: ok });
       setLate(null);
       setMove(null);
+      return true;
     } catch (e) {
       setNote({ kind: 'err', text: (e as Error).message });
+      if ((e as ApiError).status === 401) setNeedLogin(true);
+      return false;
     }
   };
 
@@ -351,6 +359,14 @@ function Team() {
       {t.emailErrors.length > 0 && (
         <div className="msg err">Some emails could not be sent{t.emailErrors.some((e) => !e.gaveUp) ? ' (retrying automatically)' : ''}: {t.emailErrors.map((e) => `${e.subject} to ${e.to}${e.gaveUp ? ' (gave up)' : ''}`).join('; ')}. Check the Brevo key, sender and daily limit.</div>
       )}
+      <nav className="tabs" aria-label="Team">
+        {([['sessions', 'Sessions'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['admin', 'Admin']] as const).map(([k, l]) => {
+          const n = k === 'follow' ? t.crm.riders.filter((r) => r.followUpDue || r.status === 'due' || r.status === 'never_came').length : k === 'contacts' ? t.crm.leads.filter((l) => l.followUpDue).length : 0;
+          return <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}{n > 0 && <span className="badge">{n}</span>}</button>;
+        })}
+      </nav>
+      {tab === 'sessions' && (
+        <>
       <section className="card">
         <div className="row spread">
           <h1>Upcoming sessions</h1>
@@ -418,6 +434,13 @@ function Team() {
         )}
       </section>
 
+        </>
+      )}
+      {tab === 'follow' && <FollowUp crm={t.crm} act={act} />}
+      {tab === 'contacts' && <Contacts crm={t.crm} act={act} />}
+      {tab === 'sales' && <Sales crm={t.crm} />}
+      {tab === 'admin' && (
+        <>
       <section className="card">
         <h2>Riders</h2>
         <div className="scroll">
@@ -485,6 +508,8 @@ function Team() {
         <p className="small muted">Subscribe once in Outlook (Add calendar → From internet) or Google Calendar (Other calendars → From URL). Keep this link private.</p>
         <code className="small">{t.calendarUrl}</code>
       </section>
+        </>
+      )}
     </Shell>
   );
 }
@@ -524,9 +549,33 @@ function PartnerConsent() {
   );
 }
 
+// Link in reminder emails: stop them without logging in.
+function StopReminders() {
+  const token = location.pathname.split('/')[2] || '';
+  const [state, setState] = useState<'ask' | 'busy' | 'done'>('ask');
+  const [note, setNote] = useState<Note>(null);
+  return (
+    <Shell>
+      <section className="card narrow">
+        {state === 'done' ? (
+          <><h1>Done</h1><p className="muted">You will not get reminder emails from NDURE Labs any more. Booking confirmations still arrive. Changed your mind? Email contact@ndure.dk.</p></>
+        ) : (
+          <>
+            <h1>Stop reminder emails?</h1>
+            <p className="muted">We send a short reminder when it is time for your next check in. You can stop those here. Emails about your bookings still arrive.</p>
+            <NoteBox note={note} />
+            <button className="primary" disabled={state === 'busy'} onClick={() => { setState('busy'); api('/api/stop', { t: token }).then(() => setState('done'), (e) => { setNote({ kind: 'err', text: e.message }); setState('ask'); }); }}>Stop reminder emails</button>
+          </>
+        )}
+      </section>
+    </Shell>
+  );
+}
+
 function App() {
   const p = location.pathname;
   if (p.startsWith('/consent/')) return <PartnerConsent />;
+  if (p.startsWith('/stop/')) return <StopReminders />;
   if (p.startsWith('/team')) return <Team />;
   if (p.startsWith('/account')) return <Account />;
   if (p === '/terms') return <Terms />;

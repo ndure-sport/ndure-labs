@@ -100,7 +100,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
   const url = new URL(req.url);
   const p = url.pathname;
   const m = req.method;
-  const appUrl = env.APP_URL.replace(/\/$/, '');
+  const appUrl = (env.APP_URL || url.origin).replace(/\/$/, ''); // previews have no APP_URL: use their own address
   const ip = req.headers.get('cf-connecting-ip') || '';
 
   // Basic protection against other sites posting to our API.
@@ -163,6 +163,14 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
   }
 
   // Status of the checkout this browser started, for the page shown after paying.
+  // Link in reminder emails: stop them, no login needed.
+  if (m === 'POST' && p === '/api/stop') {
+    const b = await body(req);
+    let out: { name: string } | null = null;
+    await change(env, (st) => { out = engine(st).stopReminders(String(b.t ?? '')); });
+    return json({ ok: true, ...(out ?? {}) });
+  }
+
   if (m === 'GET' && p === '/api/order-status') {
     const s = await read(env);
     const co = await verify<{ o: string; exp: number }>(s.secrets.session, getCookie(req, 'co'));
@@ -362,7 +370,8 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
           openCheckouts: st.db.orders.filter((o) => o.status === 'pending').length
         },
         alerts: st.db.alerts.slice(-20).reverse().map((a) => ({ at: a.at, kind: a.kind, text: a.text })),
-        audit: st.db.audit.slice(-50).reverse()
+        audit: st.db.audit.slice(-50).reverse(),
+        crm: e.crm()
       };
     };
     if (m === 'GET' && p === '/api/team') return json(view(s, bytes));
@@ -423,6 +432,38 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
             const d = clean(b.date, 10);
             st.db.closed = st.db.closed.filter((c) => c.date !== d);
             return e.audit(me, 'reopen day', d);
+          }
+          // ---------- CRM ----------
+          case 'lead_save': {
+            const l = e.saveLead({ ...(b.lead && typeof b.lead === 'object' ? b.lead : {}), id: b.lead?.id ? clean(b.lead.id, 40) : undefined });
+            return e.audit(me, b.lead?.id ? 'update contact' : 'add contact', l.name);
+          }
+          case 'lead_from_unpaid': {
+            const c = e.customer(clean(b.customerId, 40));
+            const l = e.saveLead({ name: c.name, email: c.email, phone: c.phone, source: 'Started booking, did not pay', okToCall: false });
+            return e.audit(me, 'add contact', l.name);
+          }
+          case 'lead_remove': {
+            const l = e.removeLead(clean(b.leadId, 40));
+            return e.audit(me, 'remove contact', l.name);
+          }
+          case 'contact_log': {
+            const k = e.logContact({ by: me, customerId: b.customerId ? clean(b.customerId, 40) : null, leadId: b.leadId ? clean(b.leadId, 40) : null, kind: b.kind, text: String(b.text ?? '') });
+            if (k.leadId && b.followUpOn !== undefined) e.saveLead({ id: k.leadId, followUpOn: b.followUpOn, ...(b.status ? { status: b.status } : {}) });
+            if (k.customerId && b.followUpOn !== undefined) e.setFollowUp(k.customerId, b.followUpOn);
+            return;
+          }
+          case 'followup': {
+            const c = e.setFollowUp(clean(b.customerId, 40), b.date);
+            return e.audit(me, 'follow up', `${c.name}: ${c.followUpOn ?? 'none'}`);
+          }
+          case 'reminders': {
+            const c = e.setReminders(clean(b.customerId, 40), b.on === true);
+            return e.audit(me, b.on === true ? 'reminders on' : 'reminders off', c.name);
+          }
+          case 'checkin': {
+            e.sendCheckIn(clean(b.customerId, 40), me);
+            return e.audit(me, 'check in email', e.customer(clean(b.customerId, 40)).name);
           }
           default:
             throw new LabsError('Unknown action.', 'action');

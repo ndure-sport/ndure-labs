@@ -3,7 +3,7 @@
 // on Cloudflare with a real database.
 
 import type { Config, Block } from './config';
-import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents } from './types';
+import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
 export const CONSENT_VERSION = '2026-11-04';
@@ -55,6 +55,9 @@ export function randomId(bytes = 18): string {
 const UNPAID_EXPIRE_HOURS = 2; // an unpaid checkout without a picked seat closes after this
 const EXPIRED_ORDER_KEEP_DAYS = 21; // long enough for slow bank payments to still be matched
 const EMAIL_KEEP_DAYS = 30;
+const CONTACTS_KEEP = 5000; // calls, emails and notes in the CRM
+const LEADS_MAX = 2000;
+const CHECKIN_GAP_DAYS = 14; // at most one personal check in email per rider in this time
 const LOGIN_FAILS_PER_DAY = 10; // wrong codes per account per 24 hours before it is locked
 const AUDIT_KEEP = 500;
 const ALERTS_KEEP = 200;
@@ -200,9 +203,10 @@ export class Labs {
   }
 
   // ---------- emails ----------
-  private send(to: string, template: Email['template'], key: string, subject: string, body: string) {
-    if (this.db.emails.some((e) => e.key === key) || this.db.done.includes(key)) return;
+  private send(to: string, template: Email['template'], key: string, subject: string, body: string): boolean {
+    if (this.db.emails.some((e) => e.key === key) || this.db.done.includes(key)) return false;
     this.db.emails.push({ id: this.id('e'), key, to, template, subject, body, at: this.iso() });
+    return true;
   }
 
   // ---------- audit log and staff alerts ----------
@@ -668,6 +672,180 @@ export class Labs {
     return this.db.customers.map((c) => ({ ...c, ...this.account(c.id) }));
   }
 
+
+  // ---------- CRM: people to call, riders to follow up ----------
+  private stopLine(c: Customer) {
+    c.stopToken ??= randomId(18);
+    return `\n\nDon't want these reminders? Stop them here: book.ndure.dk/stop/${c.stopToken}`;
+  }
+
+  stopReminders(token: string) {
+    const t = clean(token, 40);
+    const c = t.length >= 20 ? this.db.customers.find((x) => x.stopToken === t) : undefined;
+    if (!c) throw new LabsError('This link is not valid. Email contact@ndure.dk and we stop the reminders.', 'stop');
+    if (!c.noReminders) {
+      c.noReminders = true;
+      this.logContact({ by: `rider:${c.email}`, customerId: c.id, kind: 'note', text: 'Stopped reminder emails' });
+    }
+    return { name: c.name.split(' ')[0] };
+  }
+
+  logContact(x: { by: string; customerId?: string | null; leadId?: string | null; kind: Contact['kind']; text: string }) {
+    if (!x.customerId && !x.leadId) throw new LabsError('Pick a rider or a contact.', 'contact');
+    if (x.customerId) this.customer(x.customerId);
+    if (x.leadId) this.lead(x.leadId);
+    if (!['call', 'email', 'note'].includes(x.kind)) throw new LabsError('Unknown kind of contact.', 'contact');
+    const text = clean(x.text, 500);
+    if (!text) throw new LabsError('Write what happened.', 'contact');
+    const entry: Contact = { id: this.id('k'), at: this.iso(), by: clean(x.by, 120), customerId: x.customerId ?? null, leadId: x.leadId ?? null, kind: x.kind, text };
+    this.db.contacts.push(entry);
+    if (this.db.contacts.length > CONTACTS_KEEP) this.db.contacts.splice(0, this.db.contacts.length - CONTACTS_KEEP);
+    return entry;
+  }
+
+  lead(id: string): Lead {
+    const l = this.db.leads.find((x) => x.id === id);
+    if (!l) throw new LabsError('Contact not found.', 'lead');
+    return l;
+  }
+
+  saveLead(input: { id?: string; name?: unknown; email?: unknown; phone?: unknown; source?: unknown; note?: unknown; status?: unknown; okToCall?: unknown; followUpOn?: unknown }): Lead {
+    const statuses: LeadStatus[] = ['new', 'contacted', 'interested', 'not_now', 'booked'];
+    const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const l = input.id ? this.lead(input.id) : null;
+    const name = input.name !== undefined ? clean(input.name, LIMITS.name) : l?.name ?? '';
+    const email = input.email !== undefined ? cleanEmail(input.email) || null : l?.email ?? null;
+    const phone = input.phone !== undefined ? clean(input.phone, LIMITS.phone) || null : l?.phone ?? null;
+    if (!name) throw new LabsError('Add a name.', 'lead');
+    if (!email && !phone) throw new LabsError('Add an email or a phone number.', 'lead');
+    const next: Lead = {
+      id: l?.id ?? this.id('l'),
+      name, email, phone,
+      source: input.source !== undefined ? clean(input.source, 80) : l?.source ?? '',
+      note: input.note !== undefined ? clean(input.note, 500) : l?.note ?? '',
+      status: statuses.includes(input.status as LeadStatus) ? (input.status as LeadStatus) : l?.status ?? 'new',
+      okToCall: input.okToCall !== undefined ? input.okToCall === true : l?.okToCall ?? false,
+      followUpOn: input.followUpOn !== undefined ? day(input.followUpOn) : l?.followUpOn ?? null,
+      createdAt: l?.createdAt ?? this.iso(),
+      updatedAt: this.iso()
+    };
+    if (l) Object.assign(l, next);
+    else {
+      if (this.db.leads.length >= LEADS_MAX) throw new LabsError('The contact list is full. Remove old contacts first.', 'lead');
+      this.db.leads.push(next);
+    }
+    return l ?? next;
+  }
+
+  removeLead(id: string) {
+    const l = this.lead(id);
+    this.db.leads = this.db.leads.filter((x) => x.id !== l.id);
+    this.db.contacts = this.db.contacts.filter((x) => x.leadId !== l.id);
+    return l;
+  }
+
+  setFollowUp(customerId: string, date: unknown) {
+    const c = this.customer(customerId);
+    c.followUpOn = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    return c;
+  }
+
+  setReminders(customerId: string, on: boolean) {
+    const c = this.customer(customerId);
+    c.noReminders = !on;
+    return c;
+  }
+
+  // A personal check in email, sent by the team from the CRM.
+  sendCheckIn(customerId: string, by: string) {
+    const c = this.customer(customerId);
+    if (c.noReminders) throw new LabsError(`${c.name} asked not to get reminder emails. Call or write personally instead.`, 'no_reminders');
+    const recent = this.db.contacts.find((x) => x.customerId === c.id && x.kind === 'email' && x.text.startsWith('Check in') && Date.parse(x.at) > this.now() - days(CHECKIN_GAP_DAYS));
+    if (recent) throw new LabsError(`A check in email went to ${c.name} on ${fmt(recent.at, { day: 'numeric', month: 'long' })}. Wait at least ${CHECKIN_GAP_DAYS} days.`, 'too_soon');
+    const left = this.balance(c.id).total;
+    const last = this.db.bookings.filter((b) => b.customerId === c.id && b.status === 'attended').sort((a, b) => Date.parse(b.start) - Date.parse(a.start))[0];
+    const since = last ? `Your last test was on ${fmt(last.start, { day: 'numeric', month: 'long' })}. ` : '';
+    this.send(
+      c.email,
+      'checkin',
+      `checkin:${c.id}:${this.iso()}`,
+      'Time for your next check in?',
+      `Hi ${c.name.split(' ')[0]},\n\n${since}Your fitness has likely moved since then, and with it your zones. A check in shows what your training did and sets your new numbers.\n\n${left > 0 ? `You have ${left} ${left === 1 ? 'session' : 'sessions'} left: book at book.ndure.dk/account.` : 'Book your next session at book.ndure.dk.'}\n\nOr just reply to this email if you have questions.\n\nAnna, NDURE Labs${this.stopLine(c)}`
+    );
+    return this.logContact({ by, customerId: c.id, kind: 'email', text: 'Check in email sent' });
+  }
+
+  crm() {
+    const now = this.now();
+    const today = cphDate(now);
+    const lastContact = (pred: (x: Contact) => boolean) => {
+      for (let i = this.db.contacts.length - 1; i >= 0; i--) if (pred(this.db.contacts[i])) return this.db.contacts[i];
+      return null;
+    };
+    const history = (pred: (x: Contact) => boolean) => this.db.contacts.filter(pred).slice(-20).reverse();
+    const DUE = days(7 * (this.config.emails.retestNudgeWeeks.at(-1) ?? 8));
+
+    // Riders who paid or got sessions: when they came in, and whether it is time to reach out.
+    const riders = this.db.customers.flatMap((c) => {
+      const orders = this.db.orders.filter((o) => o.customerId === c.id && o.status === 'paid');
+      if (!orders.length) return [];
+      const mine = this.db.bookings.filter((b) => b.customerId === c.id && b.status !== 'cancelled');
+      const visits = mine.filter((b) => b.status === 'attended' || (b.status === 'booked' && Date.parse(b.start) <= now)).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+      const next = mine.filter((b) => b.status === 'booked' && Date.parse(b.start) > now).sort((a, b) => Date.parse(a.start) - Date.parse(b.start))[0] ?? null;
+      const bal = this.balance(c.id);
+      const last = visits[0] ?? null;
+      const expires = bal.orders.map((o) => o.expiresAt!).filter(Boolean).sort()[0] ?? null;
+      const status = next ? 'booked' : !last ? 'never_came' : now - Date.parse(last.start) >= DUE ? 'due' : 'fine';
+      const lc = lastContact((x) => x.customerId === c.id);
+      return [{
+        id: c.id, name: c.name, email: c.email, phone: c.phone, goal: c.goal,
+        firstPaid: orders.map((o) => o.paidAt!).filter(Boolean).sort()[0] ?? null,
+        spent: orders.filter((o) => !o.free).reduce((sum, o) => sum + o.total, 0),
+        visits: visits.length,
+        noShows: mine.filter((b) => b.status === 'no_show').length,
+        lastVisit: last?.start ?? null,
+        nextVisit: next?.start ?? null,
+        left: bal.total,
+        expires,
+        status,
+        followUpOn: c.followUpOn ?? null,
+        followUpDue: !!c.followUpOn && c.followUpOn <= today,
+        noReminders: !!c.noReminders,
+        lastContact: lc ? { at: lc.at, kind: lc.kind, text: lc.text, by: lc.by } : null,
+        history: history((x) => x.customerId === c.id),
+        visitList: visits.slice(0, 12).map((b) => b.start)
+      }];
+    });
+
+    // People who started a booking and did not pay (kept 3 weeks, then deleted).
+    const paidEmails = new Set(riders.map((r) => r.email));
+    const unpaid = this.db.customers.flatMap((c) => {
+      if (paidEmails.has(c.email)) return [];
+      const o = this.db.orders.filter((x) => x.customerId === c.id && x.status !== 'paid').sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+      return o ? [{ id: c.id, name: c.name, email: c.email, phone: c.phone, at: o.createdAt, qty: o.qty, total: o.total, open: o.status === 'pending', inLeads: this.db.leads.some((l) => l.email === c.email) }] : [];
+    });
+
+    const leads = this.db.leads.map((l) => {
+      const lc = lastContact((x) => x.leadId === l.id);
+      return { ...l, followUpDue: !!l.followUpOn && l.followUpOn <= today, lastContact: lc ? { at: lc.at, kind: lc.kind, text: lc.text, by: lc.by } : null, history: history((x) => x.leadId === l.id), isRider: paidEmails.has(l.email ?? '') };
+    });
+
+    const month = (iso: string) => iso.slice(0, 7);
+    const sales = new Map<string, { month: string; revenue: number; orders: number; sessions: number; newRiders: number; visits: number }>();
+    const row = (m: string) => sales.get(m) ?? sales.set(m, { month: m, revenue: 0, orders: 0, sessions: 0, newRiders: 0, visits: 0 }).get(m)!;
+    for (const o of this.db.orders) if (o.status === 'paid' && !o.free && o.paidAt) { const r = row(month(cphDate(Date.parse(o.paidAt)))); r.revenue += o.total; r.orders++; r.sessions += o.qty; }
+    for (const r of riders) if (r.firstPaid) row(month(cphDate(Date.parse(r.firstPaid)))).newRiders++;
+    for (const b of this.db.bookings) if (b.status === 'attended') row(month(cphDate(Date.parse(b.start)))).visits++;
+
+    return {
+      today,
+      riders: riders.sort((a, b) => (a.followUpDue === b.followUpDue ? 0 : a.followUpDue ? -1 : 1) || ['due', 'never_came', 'fine', 'booked'].indexOf(a.status) - ['due', 'never_came', 'fine', 'booked'].indexOf(b.status) || (a.lastVisit ?? '').localeCompare(b.lastVisit ?? '')),
+      leads: leads.sort((a, b) => (a.followUpDue === b.followUpDue ? 0 : a.followUpDue ? -1 : 1) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+      unpaid: unpaid.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+      sales: [...sales.values()].sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12)
+    };
+  }
+
   // Calendar feed the team subscribes to once in Outlook or Google.
   calendarFeed(): string {
     const stamp = (iso: string) => iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -721,17 +899,18 @@ export class Labs {
       const mine = this.db.bookings.filter((b) => b.customerId === c.id && b.status !== 'cancelled');
       if (mine.some((b) => b.status === 'booked' && Date.parse(b.start) > now)) continue;
       const last = mine.filter((b) => Date.parse(b.start) <= now && b.status !== 'no_show').sort((a, b) => Date.parse(b.start) - Date.parse(a.start))[0];
-      if (!last) continue;
+      if (!last || c.noReminders) continue;
       const left = this.balance(c.id).total;
       for (const w of E.retestNudgeWeeks) {
         if (now >= Date.parse(last.start) + days(7 * w)) {
-          this.send(
+          const subject = w === E.retestNudgeWeeks[0] ? 'Time to see if your training works' : 'Your thresholds have probably moved';
+          if (this.send(
             c.email,
             'nudge',
             `nudge${w}:${last.id}`,
-            w === E.retestNudgeWeeks[0] ? 'Time to see if your training works' : 'Your thresholds have probably moved',
-            `It's ${w} weeks since your last test on ${fmt(last.start, { day: 'numeric', month: 'long' })}. A retest shows whether your zones have moved.\n\n${left > 0 ? `You have ${left} ${left === 1 ? 'session' : 'sessions'} left: book in one tap at book.ndure.dk/account.` : 'Book your next test at book.ndure.dk.'}`
-          );
+            subject,
+            `It's ${w} weeks since your last test on ${fmt(last.start, { day: 'numeric', month: 'long' })}. A retest shows whether your zones have moved.\n\n${left > 0 ? `You have ${left} ${left === 1 ? 'session' : 'sessions'} left: book in one tap at book.ndure.dk/account.` : 'Book your next test at book.ndure.dk.'}${this.stopLine(c)}`
+          )) this.logContact({ by: 'system', customerId: c.id, kind: 'email', text: `Automatic reminder: ${subject}` });
         }
       }
     }
@@ -757,6 +936,8 @@ export class Labs {
     this.db.orders = this.db.orders.filter((o) => !(o.status === 'expired' && Date.parse(o.createdAt) < orderCut && !booked.has(o.id)));
     const active = new Set([...this.db.orders.map((o) => o.customerId), ...this.db.bookings.map((b) => b.customerId)]);
     this.db.customers = this.db.customers.filter((c) => active.has(c.id) || Date.parse(c.createdAt) > orderCut);
+    const ids = new Set(this.db.customers.map((c) => c.id));
+    this.db.contacts = this.db.contacts.filter((x) => !x.customerId || ids.has(x.customerId));
     // Old emails: keep only their key, so an automatic email never goes out twice.
     const emailCut = now - days(EMAIL_KEEP_DAYS);
     const keep: Email[] = [];

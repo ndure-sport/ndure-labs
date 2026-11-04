@@ -97,7 +97,7 @@ export async function deliver(env: Env, max: number): Promise<{ sent: number; fa
   });
   if (!work.jobs.length && !work.alerts.length) return { sent: 0, failed: 0 };
 
-  const appHost = env.APP_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const appHost = (env.APP_URL || 'https://book.ndure.dk').replace(/^https?:\/\//, '').replace(/\/$/, '');
   const results: Record<string, string | null> = {}; // email id → null when sent, else the error
   for (const { email: e, booking: b, customer: c } of work.jobs) {
     try {
@@ -120,7 +120,7 @@ export async function deliver(env: Env, max: number): Promise<{ sent: number; fa
   const alertResults: Record<string, boolean> = {};
   for (const a of work.alerts) {
     try {
-      await sendStaff(env, `NDURE Labs alert: ${a.kind.replace(/_/g, ' ')}`, `${a.text}\n\nSee the team page: ${env.APP_URL.replace(/\/$/, '')}/team`);
+      await sendStaff(env, `NDURE Labs alert: ${a.kind.replace(/_/g, ' ')}`, `${a.text}\n\nSee the team page: ${(env.APP_URL || 'https://book.ndure.dk').replace(/\/$/, '')}/team`);
       alertResults[a.id] = true;
     } catch (err) {
       console.error('Alert failed', err);

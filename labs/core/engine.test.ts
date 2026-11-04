@@ -357,3 +357,57 @@ test('riders can only book from the opening day; the team can book before', () =
   assert.ok(labs.slots(1, { team: true }).some((s) => s.start < '2026-12-08'));
   assert.throws(() => labs.checkout(rider('early@x.dk', { start: '2026-12-02T09:30:00+01:00' })), /Booking opens/);
 });
+
+test('CRM: riders due for a check in, contact log, check in email, stop link', () => {
+  const { labs, tick } = setup();
+  const o = labs.checkout(rider('crm@x.dk', { qty: 3, start: '2026-12-01T09:30:00+01:00', phone: '+45 1234' }));
+  labs.paid(o.id);
+  const c = labs.customerByEmail('crm@x.dk')!;
+  tick(2 * 86_400_000);
+  labs.markAttendance(labs.db.bookings[0].id, 'attended');
+  let r = labs.crm().riders.find((x) => x.id === c.id)!;
+  assert.equal(r.status, 'fine');
+  assert.equal(r.visits, 1);
+  assert.equal(r.left, 2);
+  // 9 weeks later with nothing booked: due, and the automatic reminders went out and are logged.
+  tick(9 * 7 * 86_400_000);
+  r = labs.crm().riders.find((x) => x.id === c.id)!;
+  assert.equal(r.status, 'due');
+  assert.ok(r.history.some((h) => h.kind === 'email' && h.text.startsWith('Automatic reminder')));
+  const nudge = labs.db.emails.find((e) => e.template === 'nudge')!;
+  const token = nudge.body.match(/stop\/([\w-]+)/)![1];
+  // Team logs a call with a follow up date, then sends a check in email; a second one right after is refused.
+  labs.logContact({ by: 'team@ndure.dk', customerId: c.id, kind: 'call', text: 'Wants to come in January' });
+  labs.setFollowUp(c.id, '2027-01-05');
+  assert.equal(labs.crm().riders[0].followUpOn, '2027-01-05');
+  labs.sendCheckIn(c.id, 'team@ndure.dk');
+  assert.ok(labs.db.emails.some((e) => e.template === 'checkin' && e.body.includes('2 sessions left') && e.body.includes('/stop/')));
+  assert.throws(() => labs.sendCheckIn(c.id, 'team@ndure.dk'), /Wait at least/);
+  // The rider stops reminders with the link: no more check in emails.
+  assert.throws(() => labs.stopReminders('nonsense-token-that-is-long'), /not valid/);
+  labs.stopReminders(token);
+  assert.equal(labs.customer(c.id).noReminders, true);
+  assert.throws(() => labs.sendCheckIn(c.id, 'team@ndure.dk'), /asked not to/);
+  // Sales count the payment once.
+  const s = labs.crm().sales.find((x) => x.month === '2026-11' || x.month === '2026-12')!;
+  assert.equal(labs.crm().sales.reduce((n, x) => n + x.revenue, 0), 1305);
+  assert.ok(s);
+});
+
+test('CRM: contacts need a name and a phone or email; unpaid checkouts are listed', () => {
+  const { labs } = setup();
+  assert.throws(() => labs.saveLead({ name: 'No Way' }), /email or a phone/);
+  const l = labs.saveLead({ name: 'Expo Rider', phone: '+45 5555', source: 'Ironman expo', okToCall: true, followUpOn: '2026-11-30' });
+  assert.equal(labs.crm().leads[0].followUpDue, true);
+  labs.saveLead({ id: l.id, status: 'interested' });
+  assert.equal(labs.lead(l.id).status, 'interested');
+  assert.equal(labs.lead(l.id).phone, '+45 5555');
+  labs.logContact({ by: 'team@ndure.dk', leadId: l.id, kind: 'call', text: 'Will book after Christmas' });
+  assert.equal(labs.crm().leads[0].history.length, 1);
+  labs.checkout(rider('maybe@x.dk', { qty: 6, later: true, name: 'Maybe Rider' }));
+  const u = labs.crm().unpaid;
+  assert.equal(u.length, 1);
+  assert.equal(u[0].total, 2250);
+  labs.removeLead(l.id);
+  assert.equal(labs.db.contacts.length, 0);
+});
