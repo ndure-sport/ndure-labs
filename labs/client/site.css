@@ -346,3 +346,8 @@ code { word-break: break-all; background: var(--soft); padding: 6px 8px; border-
 table.hours td, table.hours th { text-align: center; }
 table.hours td:first-child, table.hours th:first-child { text-align: left; }
 @media (max-width: 640px) { .page .cal-day { min-height: 56px; padding: 6px; } .page .cal-day small { display: none; } .cal-n { position: static; align-self: flex-start; } }
+
+/* ---------- team: email preview ---------- */
+.modal { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, .5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal-in { background: #fff; border-radius: 20px; padding: 16px; width: min(680px, 100%); height: min(860px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.modal-in iframe { flex: 1; width: 100%; border: 1px solid var(--line); border-radius: 12px; background: #F4F4F4; }

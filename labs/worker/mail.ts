@@ -125,3 +125,28 @@ export function teamDetails(b: Booking, c: Customer | undefined): { title: strin
     details: [`${c?.name ?? ''} ${c?.phone ? `· ${c.phone}` : ''}`, c?.email ?? '', c?.ftp ? `FTP ${c.ftp} W` : '', c?.goal ? `Goal: ${c.goal}` : '', b.withPartner ? `Partner: ${b.partnerName}` : '', 'Team page: book.ndure.dk/team'].filter(Boolean).join('\n')
   };
 }
+
+// ---------- the list the team sees on the Emails tab ----------
+export type Automation = { template: Email['template']; name: string; when: string; to: string; kind: 'essential' | 'automatic' | 'manual' | 'team' };
+export const AUTOMATIONS: Automation[] = [
+  { template: 'login_code', name: 'Login code', when: 'When someone asks to log in', to: 'Rider or team member', kind: 'essential' },
+  { template: 'payment', name: 'Payment received', when: 'Right after paying', to: 'Rider', kind: 'essential' },
+  { template: 'confirmation', name: 'Booking confirmed, with calendar invite', when: 'Right after booking a session', to: 'Rider', kind: 'essential' },
+  { template: 'rescheduled', name: 'Session moved, calendar updated', when: 'When the rider or team moves a session', to: 'Rider', kind: 'essential' },
+  { template: 'cancelled', name: 'Session cancelled, removed from calendar', when: 'When a session is cancelled, or the picked time filled up during payment', to: 'Rider', kind: 'essential' },
+  { template: 'partner', name: 'Training partner consent', when: 'When a rider brings a partner (not offered on the page now)', to: 'Partner', kind: 'essential' },
+  { template: 'reminder', name: 'Session reminder', when: '48 hours before the session', to: 'Rider', kind: 'automatic' },
+  { template: 'after', name: 'How was your session?', when: '2 days after the session', to: 'Rider', kind: 'automatic' },
+  { template: 'nudge', name: 'Check in reminder', when: '4 and 8 weeks after the last session, only if nothing is booked. Has a stop link', to: 'Rider', kind: 'automatic' },
+  { template: 'expiry', name: 'Sessions about to expire', when: '30 days before unused sessions expire', to: 'Rider', kind: 'automatic' },
+  { template: 'checkin', name: 'Personal check in', when: 'Only when someone on the team presses "Send check in email" (max once per 14 days per rider)', to: 'Rider', kind: 'manual' }
+];
+export const TEAM_MAILS = [
+  'Today at Labs: the day\'s riders with phone, FTP and goal, every opening day at 07:00',
+  'New booking, move or cancel for a session in the next 48 hours',
+  'Alerts: late payments, payments found without webhook, emails failing, automatic emails paused',
+  'Team calendar invites for every booking, move and cancel (only if TEAM_CALENDAR_EMAIL is set)'
+];
+
+// Login codes never show on the team page.
+export const maskCodes = (s: string) => s.replace(/\b\d{6}\b/g, '••••••');

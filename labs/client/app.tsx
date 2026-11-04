@@ -11,6 +11,7 @@ import { Landing } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
 import { FollowUp, Contacts, Sales, type CrmData } from './crm';
 import { Opening, type OpeningData } from './opening';
+import { Emails, type EmailsData } from './emails';
 
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const time = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
@@ -303,6 +304,7 @@ type TeamData = {
   audit: { at: string; by: string; action: string; detail: string }[];
   crm: CrmData;
   opening: OpeningData;
+  emails: EmailsData;
 };
 
 function Team() {
@@ -314,8 +316,8 @@ function Team() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [give, setGive] = useState({ email: '', name: '', qty: 1 });
-  type Tab = 'sessions' | 'opening' | 'follow' | 'contacts' | 'sales' | 'admin';
-  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'opening', 'follow', 'contacts', 'sales', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
+  type Tab = 'sessions' | 'opening' | 'follow' | 'contacts' | 'sales' | 'emails' | 'admin';
+  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'opening', 'follow', 'contacts', 'sales', 'emails', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
   const setTab = (x: Tab) => { setTabState(x); setNote(null); history.replaceState(null, '', `/team#${x}`); };
 
   const load = useCallback(async () => {
@@ -361,8 +363,8 @@ function Team() {
         <div className="msg err">Some emails could not be sent{t.emailErrors.some((e) => !e.gaveUp) ? ' (retrying automatically)' : ''}: {t.emailErrors.map((e) => `${e.subject} to ${e.to}${e.gaveUp ? ' (gave up)' : ''}`).join('; ')}. Check the Brevo key, sender and daily limit.</div>
       )}
       <nav className="tabs" aria-label="Team">
-        {([['sessions', 'Sessions'], ['opening', 'Opening hours'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['admin', 'Admin']] as const).map(([k, l]) => {
-          const n = k === 'follow' ? t.crm.riders.filter((r) => r.followUpDue || r.status === 'due' || r.status === 'never_came').length : k === 'contacts' ? t.crm.leads.filter((l) => l.followUpDue).length : 0;
+        {([['sessions', 'Sessions'], ['opening', 'Opening hours'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['emails', 'Emails'], ['admin', 'Admin']] as const).map(([k, l]) => {
+          const n = k === 'emails' ? (t.emails.paused ? 1 : 0) + t.emails.log.filter((x) => x.status === 'failed').length : k === 'follow' ? t.crm.riders.filter((r) => r.followUpDue || r.status === 'due' || r.status === 'never_came').length : k === 'contacts' ? t.crm.leads.filter((l) => l.followUpDue).length : 0;
           return <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}{n > 0 && <span className="badge">{n}</span>}</button>;
         })}
       </nav>
@@ -441,6 +443,7 @@ function Team() {
       {tab === 'follow' && <FollowUp crm={t.crm} act={act} />}
       {tab === 'contacts' && <Contacts crm={t.crm} act={act} />}
       {tab === 'sales' && <Sales crm={t.crm} />}
+      {tab === 'emails' && <Emails d={t.emails} act={act} />}
       {tab === 'admin' && (
         <>
       <section className="card">

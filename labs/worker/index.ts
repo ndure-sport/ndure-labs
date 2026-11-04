@@ -8,7 +8,8 @@ import { change, read, readWithSize, Conflict, type Env, type State } from './st
 import { sign, verify, getCookie, cookie, sixDigits } from './auth';
 import { createCheckout, verifyStripe, paidCheckoutOrders } from './stripe';
 import { deliver, teamEmails, sendStaff, dailySummary, sessionToken } from './email';
-import { sessionIcs } from './mail';
+import { sessionIcs, renderEmail, AUTOMATIONS, TEAM_MAILS, maskCodes } from './mail';
+import { sampleEmails } from './samples';
 
 const config: Config = DEFAULT_CONFIG;
 const engine = (s: State) => new Labs(s.db, config, () => Date.now());
@@ -382,10 +383,37 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         },
         alerts: st.db.alerts.slice(-20).reverse().map((a) => ({ at: a.at, kind: a.kind, text: a.text })),
         audit: st.db.audit.slice(-50).reverse(),
-        crm: e.crm()
+        crm: e.crm(),
+        emails: {
+          automations: AUTOMATIONS.map((a) => ({
+            ...a,
+            on: a.kind !== 'automatic' || !st.db.emailOff.includes(a.template),
+            last30: st.db.emails.filter((x) => x.template === a.template && x.sent).length
+          })),
+          team: TEAM_MAILS,
+          teamCalendar: env.TEAM_CALENDAR_EMAIL || null,
+          paused: st.db.autoPaused,
+          log: st.db.emails.slice(-300).reverse().map((x) => ({
+            id: x.id, at: x.at, to: x.to, template: x.template, subject: maskCodes(x.subject),
+            status: x.sent ? 'sent' : x.failed ? 'failed' : x.error ? 'retrying' : 'waiting', error: x.error ?? null
+          }))
+        }
       };
     };
     if (m === 'GET' && p === '/api/team') return json(view(s, bytes));
+    // What an email looks like: a logged one (login codes hidden), or an example made with made up data.
+    if (m === 'GET' && p === '/api/team/email-preview') {
+      const id = url.searchParams.get('id');
+      const tpl = url.searchParams.get('template');
+      let item: { email: { template: any; subject: string; body: string }; booking?: any } | undefined;
+      if (id) {
+        const x = s.db.emails.find((e) => e.id === id);
+        if (x) item = { email: { template: x.template, subject: maskCodes(x.subject), body: maskCodes(x.body) }, booking: s.db.bookings.find((b) => b.id === x.key.split(':')[1]) };
+      } else if (tpl) item = sampleEmails().find((x) => x.email.template === tpl);
+      if (!item) return fail('Email not found.', 404);
+      const out = renderEmail(item.email, { appUrl, booking: item.booking, icsUrl: `${appUrl}/calendar/session/example.ics` });
+      return json({ subject: item.email.subject, html: out.html, text: out.text, example: !id });
+    }
     if (m === 'GET' && p === '/api/team/slots') {
       const bid = url.searchParams.get('booking') || undefined;
       const bk = bid ? s.db.bookings.find((x) => x.id === bid) : undefined;
@@ -444,6 +472,14 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
             const from = clean(b.from ?? b.date, 10), to = clean(b.to ?? b.from ?? b.date, 10);
             e.reopenDays(from, to);
             return e.audit(me, 'reopen', from === to ? from : `${from} to ${to}`);
+          }
+          case 'email_switch': {
+            e.setEmail(String(b.template ?? ''), b.on === true);
+            return e.audit(me, b.on === true ? 'email on' : 'email off', String(b.template ?? ''));
+          }
+          case 'emails_resume': {
+            e.resumeEmails(b.send === true);
+            return e.audit(me, 'automatic emails resumed', b.send === true ? 'held emails sent' : 'held emails dropped');
           }
           case 'hours': {
             e.setHours(b.hours);

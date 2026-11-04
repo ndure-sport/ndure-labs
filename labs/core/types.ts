@@ -132,11 +132,14 @@ export type Db = {
   contacts: Contact[];
   hours: Record<string, string[]> | null; // per weekday (0 Sunday … 6 Saturday): open session blocks; null = the defaults in config
   opensOn?: string; // first bookable day for riders, set by the team ('' = no limit); missing = config
+  emailOff: string[]; // automatic emails the team switched off (templates)
+  autoPaused: { at: string; count: number; keys: string[] } | null; // safety stop: all automatic emails paused after an unusual burst
+  burstOkUntil?: string; // the team said "send them anyway": no safety stop until then
 };
 
 export const emptyDb = (): Db => ({
   seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [],
-  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: [], hours: null
+  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: [], hours: null, emailOff: [], autoPaused: null
 });
 
 // Fills in fields added after the data was first saved.

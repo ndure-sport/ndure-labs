@@ -71,6 +71,8 @@ const EXPIRED_ORDER_KEEP_DAYS = 21; // long enough for slow bank payments to sti
 const EMAIL_KEEP_DAYS = 30;
 const CONTACTS_KEEP = 5000; // calls, emails and notes in the CRM
 const LEADS_MAX = 2000;
+const AUTO_TEMPLATES: Email['template'][] = ['reminder', 'after', 'nudge', 'expiry'];
+const AUTO_BURST = 40; // more automatic emails than this in one 15 minute run pauses them all
 const CHECKIN_GAP_DAYS = 14; // at most one personal check in email per rider in this time
 const LOGIN_FAILS_PER_DAY = 10; // wrong codes per account per 24 hours before it is locked
 const AUDIT_KEEP = 500;
@@ -860,6 +862,21 @@ export class Labs {
     return this.logContact({ by, customerId: c.id, kind: 'email', text: 'Check in email sent' });
   }
 
+  // ---------- email switches ----------
+  setEmail(template: string, on: boolean) {
+    if (!AUTO_TEMPLATES.includes(template as Email['template'])) throw new LabsError('This email can not be switched off: riders need it.', 'email');
+    this.db.emailOff = on ? this.db.emailOff.filter((t) => t !== template) : [...new Set([...this.db.emailOff, template])];
+  }
+
+  // After a safety stop: send the held emails after all, or drop them for good and carry on.
+  resumeEmails(sendHeld: boolean) {
+    const held = this.db.autoPaused;
+    if (!held) return;
+    if (sendHeld) this.db.burstOkUntil = this.iso(this.now() + hours(1));
+    else this.db.done.push(...held.keys);
+    this.db.autoPaused = null;
+  }
+
   crm() {
     const now = this.now();
     const today = cphDate(now);
@@ -967,14 +984,17 @@ export class Labs {
     }
     this.db.holds = this.db.holds.filter((h) => Date.parse(h.expiresAt) > now);
     this.cleanUp();
+    const on = (t: Email['template']) => !this.db.autoPaused && !this.db.emailOff.includes(t);
+    const contactsBefore = this.db.contacts.length;
 
     for (const b of this.db.bookings) {
       const c = this.customer(b.customerId);
       const start = Date.parse(b.start);
-      if (b.status === 'booked' && start > now && start - now <= hours(E.reminderHoursBefore)) {
+      if (on('reminder') && b.status === 'booked' && start > now && start - now <= hours(E.reminderHoursBefore)) {
         this.send(c.email, 'reminder', `reminder:${b.id}`, `See you ${fmt(b.start, { weekday: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}`, `Your session is on ${when(b.start)} at Diplomvej 376, Kongens Lyngby.\n\nPrep: an easy day before, a normal meal 2 to 3 hours before, no caffeine in the last 2 hours. Bring cycling shoes, pedals, kit and a bottle. Showers and towels are on site.`);
       }
-      if ((b.status === 'attended' || (b.status === 'booked' && start < now)) && now >= start + days(E.afterSessionDays)) {
+      // Only in the week after: switching it back on never mails old sessions.
+      if (on('after') && (b.status === 'attended' || (b.status === 'booked' && start < now)) && now >= start + days(E.afterSessionDays) && now < start + days(E.afterSessionDays + 7)) {
         this.send(c.email, 'after', `after:${b.id}`, 'How was your session?', `Thanks for riding with us. Your report with your zones is in your inbox or on its way. Two quick questions: what was most useful, and what would you change? Just reply to this email.`);
       }
     }
@@ -984,10 +1004,11 @@ export class Labs {
       const mine = this.db.bookings.filter((b) => b.customerId === c.id && b.status !== 'cancelled');
       if (mine.some((b) => b.status === 'booked' && Date.parse(b.start) > now)) continue;
       const last = mine.filter((b) => Date.parse(b.start) <= now && b.status !== 'no_show').sort((a, b) => Date.parse(b.start) - Date.parse(a.start))[0];
-      if (!last || c.noReminders) continue;
+      if (!last || c.noReminders || !on('nudge')) continue;
       const left = this.balance(c.id).total;
       for (const w of E.retestNudgeWeeks) {
-        if (now >= Date.parse(last.start) + days(7 * w)) {
+        // Only in the two weeks after the mark: a pause, an import or a switch back on never fires old ones.
+        if (now >= Date.parse(last.start) + days(7 * w) && now < Date.parse(last.start) + days(7 * w + 14)) {
           const subject = w === E.retestNudgeWeeks[0] ? 'Time to see if your training works' : 'Your thresholds have probably moved';
           if (this.send(
             c.email,
@@ -1004,10 +1025,20 @@ export class Labs {
     for (const o of this.db.orders) {
       if (o.status !== 'paid' || o.remaining < 1 || !o.expiresAt) continue;
       const exp = Date.parse(o.expiresAt);
-      if (now < exp && now >= exp - days(E.expiryWarningDays)) {
+      if (on('expiry') && now < exp && now >= exp - days(E.expiryWarningDays)) {
         const c = this.customer(o.customerId);
         this.send(c.email, 'expiry', `expiry:${o.id}`, `${o.remaining} ${o.remaining === 1 ? 'session expires' : 'sessions expire'} soon`, `You have ${o.remaining} unused ${o.remaining === 1 ? 'session' : 'sessions'} that expire on ${fmt(o.expiresAt, { day: 'numeric', month: 'long' })}. Book now at book.ndure.dk/account.`);
       }
+    }
+    // Safety stop: far more automatic emails than normal in one run means something is off
+    // (an import, a bug, a date change). Hold them all and tell the team instead of sending.
+    const auto = this.db.emails.slice(before).filter((e) => AUTO_TEMPLATES.includes(e.template));
+    if (auto.length > AUTO_BURST && !(this.db.burstOkUntil && Date.parse(this.db.burstOkUntil) > now)) {
+      const ids = new Set(auto.map((e) => e.id));
+      this.db.emails = this.db.emails.filter((e) => !ids.has(e.id));
+      this.db.contacts.splice(contactsBefore);
+      this.db.autoPaused = { at: this.iso(), count: auto.length, keys: auto.map((e) => e.key).slice(0, 2000) };
+      this.alert('emails_paused', `${auto.length} automatic emails were about to go out at once, so all automatic emails are paused. Check the Emails tab on the team page, then resume.`);
     }
     return this.db.emails.slice(before);
   }

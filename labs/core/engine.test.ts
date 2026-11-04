@@ -441,3 +441,52 @@ test('opening: weekly hours, open date and closed periods set by the team', () =
   labs.setOpensOn(null);
   assert.equal(labs.opensOn(), null);
 });
+
+test('emails: switch automatic ones off, never send old ones, pause on a burst', () => {
+  const { labs, tick } = setup();
+  assert.throws(() => labs.setEmail('confirmation', false), /can not be switched off/);
+  labs.setEmail('reminder', false);
+  labs.paid(labs.checkout(rider('a@x.dk', { start: '2026-12-02T09:30:00+01:00' })).id);
+  tick(36 * 3_600_000); // a day and a half: inside the 48 hour reminder window
+  assert.ok(!labs.db.emails.some((e) => e.template === 'reminder'), 'reminder is off');
+  labs.setEmail('reminder', true);
+  tick(60_000);
+  assert.ok(labs.db.emails.some((e) => e.template === 'reminder'), 'reminder back on');
+  // "How was your session?" switched off for a month, then on: the old one never goes out.
+  labs.setEmail('after', false);
+  tick(30 * 86_400_000);
+  labs.setEmail('after', true);
+  tick(60_000);
+  assert.ok(!labs.db.emails.some((e) => e.template === 'after'), 'no late after-session email');
+});
+
+test('emails: more than 40 automatic emails in one run pauses them all and alerts', () => {
+  const big = { ...TEST_CONFIG, blocks: TEST_CONFIG.blocks.map((b) => ({ ...b, capacity: 60 })) };
+  const { labs, tick } = setup(big);
+  // 45 riders in one session (as after an import), so 45 "How was your session?" emails are due at once.
+  for (let i = 0; i < 45; i++) {
+    const o = labs.giveSessions({ email: `r${i}@x.dk`, name: `R ${i}`, qty: 2, note: 'team' });
+    labs.book(o.customerId, '2026-12-01T09:30:00+01:00', { by: 'team' });
+  }
+  tick(3 * 86_400_000);
+  assert.ok(labs.db.autoPaused, 'paused');
+  assert.equal(labs.db.emails.filter((e) => e.template === 'after').length, 0);
+  assert.ok(labs.db.alerts.some((a) => a.kind === 'emails_paused'));
+  tick(60_000);
+  assert.equal(labs.db.emails.filter((e) => e.template === 'after').length, 0, 'stays paused');
+  // Drop them: they never go out, and normal emails continue.
+  labs.resumeEmails(false);
+  tick(60_000);
+  assert.equal(labs.db.autoPaused, null);
+  assert.equal(labs.db.emails.filter((e) => e.template === 'after').length, 0, 'dropped');
+  // A new burst (45 reminders for one session), this time sent anyway.
+  for (let i = 0; i < 45; i++) labs.book(labs.customerByEmail(`r${i}@x.dk`)!.id, '2026-12-08T09:30:00+01:00', { by: 'team' });
+  tick(3 * 86_400_000);
+  assert.ok(labs.db.autoPaused);
+  assert.equal(labs.db.emails.filter((e) => e.template === 'reminder').length, 0);
+  labs.resumeEmails(true);
+  tick(60_000);
+  assert.equal(labs.db.emails.filter((e) => e.template === 'reminder').length, 45, 'sent after the team said yes');
+  // Essential emails still work while paused.
+  assert.ok(labs.db.emails.some((e) => e.template === 'confirmation'));
+});
