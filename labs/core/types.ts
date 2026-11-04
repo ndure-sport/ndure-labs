@@ -1,6 +1,6 @@
 // The data the app keeps. Each type maps one to one onto a database table later.
 
-export type ConsentKey = 'ready' | 'health' | 'terms' | 'research' | 'film';
+export type ConsentKey = 'ready' | 'health' | 'inperson' | 'terms' | 'research' | 'film';
 export type Consents = { at: string; version: string; items: Record<ConsentKey, boolean> };
 
 export type Customer = {

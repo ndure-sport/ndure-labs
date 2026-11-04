@@ -112,7 +112,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
   // ---------- public ----------
   if (m === 'GET' && p === '/api/config') {
     return json({
-      currency: env.CURRENCY || 'eur',
+      currency: config.currency,
       tiers: config.tiers,
       partnerPrice: config.partnerPrice,
       maxQty: config.maxQty,

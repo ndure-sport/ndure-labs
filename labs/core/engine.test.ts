@@ -7,7 +7,7 @@ import { days, hours } from './time.ts';
 
 // A fixed clock: Monday 30 November 2026, 10:00 Copenhagen.
 // Most tests book close to "now", so they run with a short notice period; the 1 week rule has its own test.
-const TEST_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12 };
+const TEST_CONFIG: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12, opensOn: null };
 function setup(config = TEST_CONFIG) {
   let now = Date.parse('2026-11-30T10:00:00+01:00');
   const labs = new Labs(emptyDb(), config, () => now);
@@ -17,17 +17,26 @@ function setup(config = TEST_CONFIG) {
   };
   return { labs, tick, now: () => now };
 }
-const consents = { ready: true, health: true, terms: true };
+const consents = { ready: true, health: true, inperson: true, terms: true };
 const rider = (email: string, extra: object = {}) => ({ name: 'Test Rider', email, consents, partner: false, qty: 1, ...extra });
 
 test('prices: tiers, partner, lines add up', () => {
-  assert.equal(quote(DEFAULT_CONFIG, 1, false).total, 99);
-  assert.equal(quote(DEFAULT_CONFIG, 4, false).unit, 85);
-  assert.equal(quote(DEFAULT_CONFIG, 5, true).total, 380 + 79);
-  const q = quote(DEFAULT_CONFIG, 10, false);
-  assert.equal(q.total, 690);
+  assert.equal(quote(DEFAULT_CONFIG, 1, false).total, 499);
+  assert.equal(quote(DEFAULT_CONFIG, 3, false).unit, 435);
+  assert.equal(quote(DEFAULT_CONFIG, 3, false).total, 1305);
+  assert.equal(quote(DEFAULT_CONFIG, 3, true).total, 1305 + DEFAULT_CONFIG.partnerPrice);
+  const q = quote(DEFAULT_CONFIG, 6, false);
+  assert.equal(q.total, 2250);
+  assert.equal(q.saving, 744);
   assert.equal(q.lines.reduce((s, l) => s + l.amount, 0), q.total);
-  assert.throws(() => quote(DEFAULT_CONFIG, 11, false));
+  assert.deepEqual(quote(DEFAULT_CONFIG, 1, false).next, { more: 2, unit: 435 });
+  assert.equal(q.next, null);
+});
+
+test('prices: only the 1, 3 and 6 session packs can be bought', () => {
+  for (const n of [0, 2, 4, 5, 7, 10, -1, 1.5, NaN]) assert.throws(() => quote(DEFAULT_CONFIG, n as number, false), String(n));
+  const { labs } = setup();
+  assert.throws(() => labs.checkout(rider('a@x.dk', { qty: 5, later: true })));
 });
 
 test('sessions: Tuesday to Friday only, 2 seats morning, 1 afternoon', () => {
@@ -81,14 +90,14 @@ test('a partner needs 2 seats, so only the morning fits', () => {
 
 test('pack: pay now, book later, balance goes down and up', () => {
   const { labs } = setup();
-  const o = labs.checkout(rider('a@x.dk', { qty: 5, later: true }));
+  const o = labs.checkout(rider('a@x.dk', { qty: 6, later: true }));
   labs.paid(o.id);
   const c = labs.customerByEmail('a@x.dk')!;
-  assert.equal(labs.balance(c.id).total, 5);
+  assert.equal(labs.balance(c.id).total, 6);
   const b = labs.book(c.id, '2026-12-02T09:30:00+01:00', { by: 'rider' });
-  assert.equal(labs.balance(c.id).total, 4);
-  labs.cancel(b.id, 'rider');
   assert.equal(labs.balance(c.id).total, 5);
+  labs.cancel(b.id, 'rider');
+  assert.equal(labs.balance(c.id).total, 6);
 });
 
 test('a rider cannot book the same session twice', () => {
@@ -338,4 +347,13 @@ test('riders book at least 1 week ahead; the team can book any time', () => {
   assert.equal(first, '2026-12-08T09:30:00+01:00');
   assert.throws(() => labs.checkout(rider('soon@x.dk', { start: '2026-12-01T09:30:00+01:00' })), /at least 1 week ahead/);
   assert.ok(labs.slots(1, { team: true }).some((s) => s.start === '2026-12-01T09:30:00+01:00'));
+});
+
+test('riders can only book from the opening day; the team can book before', () => {
+  const { labs } = setup({ ...TEST_CONFIG, opensOn: '2026-12-08' });
+  const slots = labs.slots(1);
+  assert.ok(slots.length > 0);
+  assert.ok(slots.every((s) => s.start >= '2026-12-08'));
+  assert.ok(labs.slots(1, { team: true }).some((s) => s.start < '2026-12-08'));
+  assert.throws(() => labs.checkout(rider('early@x.dk', { start: '2026-12-02T09:30:00+01:00' })), /Booking opens/);
 });

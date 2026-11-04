@@ -6,15 +6,16 @@ import type { Config, Block } from './config';
 import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
-export const CONSENT_VERSION = '2026-10-27';
+export const CONSENT_VERSION = '2026-11-04';
 export const CONSENT_TEXT: Record<ConsentKey, string> = {
-  ready: 'I answered no to every question in the readiness check and I am fit for a maximal effort.',
+  ready: 'I answered no to every question in the health check and I am fit for a maximal effort.',
   health: 'I explicitly consent to NDURE ApS processing my health data (blood lactate, heart rate, power) to make my report.',
+  inperson: 'I come to the lab in Kongens Lyngby, Denmark, for every session. This is a test: no sensor or device is included.',
   terms: 'I accept the terms and cancellation policy.',
   research: 'Optional: NDURE may use my anonymised sensor data to develop its sensor.',
   film: 'Optional: I am fine with being filmed for NDURE content.'
 };
-export const REQUIRED_CONSENTS: ConsentKey[] = ['ready', 'health', 'terms'];
+export const REQUIRED_CONSENTS: ConsentKey[] = ['ready', 'health', 'inperson', 'terms'];
 
 export class LabsError extends Error {
   constructor(message: string, public code: string) {
@@ -72,7 +73,8 @@ export type Quote = {
 
 export function quote(config: Config, qty: number, partner: boolean): Quote {
   const n = Math.trunc(Number(qty));
-  if (!Number.isFinite(n) || n < 1 || n > config.maxQty) throw new LabsError(`Choose between 1 and ${config.maxQty} sessions.`, 'qty');
+  if (!Number.isFinite(n) || n !== Number(qty) || n < 1 || n > config.maxQty) throw new LabsError(`Choose between 1 and ${config.maxQty} sessions.`, 'qty');
+  if (config.packs?.length && !config.packs.includes(n)) throw new LabsError(`Choose ${config.packs.join(', ').replace(/, (\d+)$/, ' or $1')} sessions.`, 'qty');
   const tiers = [...config.tiers].sort((a, b) => a.min - b.min);
   const single = tiers[0].unit;
   let unit = single;
@@ -81,7 +83,7 @@ export function quote(config: Config, qty: number, partner: boolean): Quote {
   const lines = [{ label: `Lactate session × ${n}`, amount: n * single }];
   if (saving > 0) lines.push({ label: `Price for ${n} sessions (${unit} each)`, amount: -saving });
   if (partner) lines.push({ label: 'Training partner, same session', amount: config.partnerPrice });
-  const next = tiers.find((t) => t.min > n);
+  const next = tiers.find((t) => t.min > n && (!config.packs?.length || config.packs.includes(t.min)));
   return { qty: n, unit, single, saving, total: lines.reduce((s, l) => s + l.amount, 0), lines, next: next ? { more: next.min - n, unit: next.unit } : null };
 }
 
@@ -160,6 +162,7 @@ export class Labs {
     const to = now + days(7 * this.config.bookingWeeksAhead);
     return localStarts(from, to, this.config.days, this.config.blocks)
       .filter((s) => !this.db.closed.some((c) => c.date === s.date))
+      .filter((s) => opts.team || !this.config.opensOn || s.date >= this.config.opensOn)
       .map((s) => {
         const b = this.block(s.blockId);
         const taken = this.takenAt(s.start, opts);
@@ -185,6 +188,9 @@ export class Labs {
       const h = this.config.minNoticeHours;
       const notice = h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
       throw new LabsError(`Sessions need to be booked at least ${notice} ahead.`, 'too_soon');
+    }
+    if (!opts.team && this.config.opensOn && cphDate(ms) < this.config.opensOn) {
+      throw new LabsError(`Booking opens for sessions from ${fmt(this.config.opensOn + 'T12:00:00Z', { day: 'numeric', month: 'long' })}.`, 'not_open');
     }
     const free = def.block.capacity - this.takenAt(start, opts);
     if (free < need) {
@@ -237,7 +243,7 @@ export class Labs {
     const given = (input.consents && typeof input.consents === 'object' ? input.consents : {}) as Partial<Record<ConsentKey, boolean>>;
     if (!name) throw new LabsError('Fill in your name.', 'name');
     if (!email) throw new LabsError('Fill in a valid email address.', 'email');
-    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick the readiness check, data consent and terms.', 'consent');
+    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick all the required boxes.', 'consent');
     const partnerName = input.partner ? clean(input.partnerName, LIMITS.name) : '';
     const partnerEmail = input.partner ? cleanEmail(input.partnerEmail) : '';
     if (input.partner) {
@@ -384,7 +390,7 @@ export class Labs {
   partnerConsent(token: string, input: { consents: Partial<Record<ConsentKey, boolean>>; phone?: string }) {
     const o = this.partnerOrder(token);
     const given = (input.consents && typeof input.consents === 'object' ? input.consents : {}) as Partial<Record<ConsentKey, boolean>>;
-    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick the readiness check, data consent and terms.', 'consent');
+    for (const k of REQUIRED_CONSENTS) if (given[k] !== true) throw new LabsError('Tick all the required boxes.', 'consent');
     o.partnerConsents = {
       at: this.iso(),
       version: CONSENT_VERSION,
@@ -766,6 +772,6 @@ export class Labs {
   }
 
   money(n: number) {
-    return this.config.currency === 'EUR' ? `€${n}` : `${n} DKK`;
+    return this.config.currency === 'EUR' ? `€${n}` : `${n.toLocaleString('en-US')} kr`;
   }
 }

@@ -8,7 +8,7 @@ const N = Number(process.argv[3] || 100), SPREAD = Number(process.argv[4] || 600
 const run = Date.now().toString(36);
 const net = Math.floor(Math.random() * 200) + 20;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const C = { ready: true, health: true, terms: true };
+const C = { ready: true, health: true, inperson: true, terms: true };
 
 async function call(path, body, u, extra = {}) {
   const t0 = performance.now();
@@ -42,7 +42,7 @@ const res = { checkout: [], retry: [], ms: [], orders: [] };
 const realistic = process.argv[5] === 'realistic';
 await Promise.all(riders.map(async (r) => {
   await sleep(Math.random() * SPREAD);
-  const qty = [1, 1, 3, 5][r.i % 4];
+  const qty = [1, 1, 3, 6][r.i % 4];
   let start = r.i % 2 === 0 ? popular[r.i % 5] : slots[Math.floor(Math.random() * slots.length)].start;
   for (let attempt = 0; attempt < 3; attempt++) {
     const x = await call('/api/checkout', { qty, partner: false, start, name: `Rush Rider ${r.i}`, email: r.email, consents: C, turnstile: 'human-ok' }, r);

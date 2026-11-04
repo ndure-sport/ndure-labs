@@ -12,7 +12,7 @@ export async function createCheckout(env: Env, config: Config, order: Order, ema
     throw new Error('A live Stripe key is set, but live payments are switched off. Use your test key (sk_test_ or rk_test_) until launch.');
   }
   const f = new URLSearchParams();
-  const cur = (env.CURRENCY || 'eur').toLowerCase();
+  const cur = config.currency.toLowerCase(); // from core/config.ts, so the page and Stripe can never disagree
   f.set('mode', 'payment');
   f.set('customer_email', email);
   f.set('client_reference_id', order.id);

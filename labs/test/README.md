@@ -13,5 +13,8 @@ Nothing here touches the real Stripe, Brevo or Cloudflare account.
    - `node test/rush.mjs /tmp/labs-log.jsonl 100 60000 realistic`: 100 sign-ups in a minute
    - `node test/rush.mjs /tmp/labs-log.jsonl 100 60000`: same, with all payments confirmed at once
    - `node test/outage.mjs /tmp/labs-log.jsonl`: email provider down, then back (takes 3 minutes)
+   - `node test/browser.mjs /tmp/labs-log.jsonl http://localhost:8790`: clicks through the real pages on desktop and phone
+     (every link, the whole booking, Stripe, account, log in again). Start a second app without the bot check first:
+     `npx wrangler dev --port 8790 --inspector-port 9231 --var TURNSTILE_SITE_KEY: --var APP_URL:http://localhost:8790`
 
 The rush test fills the calendar: reset the database (step 2) before running flow.mjs again.

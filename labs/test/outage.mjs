@@ -4,7 +4,7 @@ const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const ctl=(j)=>fetch(M+'/__ctl',{method:'POST',body:JSON.stringify(j)});
 const sched=()=>fetch(`${B}/cdn-cgi/handler/scheduled?cron=*/15+*+*+*+*`);
 const mails=()=>fs.readFileSync(LOG,'utf8').trim().split('\n').map(JSON.parse).filter(x=>x.email).map(x=>x.email);
-const C={ready:true,health:true,terms:true};
+const C={ready:true,health:true,inperson:true,terms:true};
 const email='outage'+Date.now()+'@test.dk';
 await ctl({brevoDown:true});
 const r=await fetch(B+'/api/checkout',{method:'POST',headers:{'content-type':'application/json','cf-connecting-ip':'10.250.0.9'},body:JSON.stringify({qty:3,later:true,partner:false,name:'Outage Rider',email,consents:C,turnstile:'human-ok'})});

@@ -30,7 +30,7 @@ async function webhook(orderId, type = 'checkout.session.completed', payment_sta
 }
 const scheduled = () => fetch(`${B}/cdn-cgi/handler/scheduled?cron=*/15+*+*+*+*`).then((r) => r.status);
 const ctl = (j) => fetch(`${MOCK}/__ctl`, { method: 'POST', body: JSON.stringify(j) });
-const C = { ready: true, health: true, terms: true };
+const C = { ready: true, health: true, inperson: true, terms: true };
 const H = 'human-ok';
 const orderOf = (r) => r.d.url.split('/').pop();
 const checkout = (u, extra) => call('/api/checkout', { qty: 1, partner: false, consents: C, turnstile: H, ...extra }, u);
@@ -43,11 +43,11 @@ const am = free.filter((s) => s.label === 'Morning' && s.free === 2);
 console.log('\n-- sign up and payment');
 const A = who();
 const emailA = `a-${run}@test.dk`;
-ok('checkout without the bot check is refused', (await checkout(A, { qty: 5, start: pm[0].start, name: 'Anna Rider', email: emailA, turnstile: '' })).status === 403);
-let r = await checkout(A, { qty: 5, start: pm[0].start, name: 'Anna Rider', email: emailA, phone: '+45 1111 1111' });
+ok('checkout without the bot check is refused', (await checkout(A, { qty: 6, start: pm[0].start, name: 'Anna Rider', email: emailA, turnstile: '' })).status === 403);
+let r = await checkout(A, { qty: 6, start: pm[0].start, name: 'Anna Rider', email: emailA, phone: '+45 1111 1111' });
 ok('checkout returns a Stripe link', r.status === 200 && r.d.url, r.d.error);
 ok('S1: before paying, the browser is NOT logged in', (await call('/api/me', undefined, A)).status === 401);
-r = await checkout(A, { qty: 5, start: pm[0].start, name: 'Anna Rider', email: emailA, phone: '+45 1111 1111' });
+r = await checkout(A, { qty: 6, start: pm[0].start, name: 'Anna Rider', email: emailA, phone: '+45 1111 1111' });
 ok('going back and picking the same session again works (old hold freed)', r.status === 200, r.d.error);
 const orderA = orderOf(r);
 const st = await call(`/api/order-status?id=${orderA}`, undefined, A);
@@ -56,7 +56,7 @@ ok('another rider cannot take the held seat', (await checkout(who(), { start: pm
 ok('webhook with a bad signature is refused', (await fetch(B + '/api/stripe/webhook', { method: 'POST', body: '{}', headers: { 'stripe-signature': 't=1,v1=abc' } })).status === 400);
 ok('webhook accepted', (await webhook(orderA)) === 200);
 r = await call(`/api/me?paid=${orderA}`, undefined, A);
-ok('new rider back from Stripe is logged in, booked, 4 left', r.status === 200 && r.d.upcoming.length === 1 && r.d.balance.total === 4, `status ${r.status}`);
+ok('new rider back from Stripe is logged in, booked, 5 left', r.status === 200 && r.d.upcoming.length === 1 && r.d.balance.total === 5, `status ${r.status}`);
 await sleep(1500);
 ok('confirmation email with calendar invite', emails().some((e) => e.to === emailA && e.subject.startsWith('Booked') && e.attach));
 ok('payment webhook twice does not double book', (await webhook(orderA)) === 200 && (await call('/api/me', undefined, A)).d.upcoming.length === 1);
