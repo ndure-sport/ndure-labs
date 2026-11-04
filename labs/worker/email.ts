@@ -13,13 +13,19 @@ import type { Email, Booking, Customer } from '../core/types';
 import { Labs } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
 import { when } from '../core/time';
+import { hmacHex } from './auth';
+import { renderEmail, sessionIcs, teamDetails } from './mail';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-const html = (text: string) =>
+const plainHtml = (text: string) =>
   `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111;max-width:520px">${esc(text)
     .split('\n\n')
     .map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, '<br>')}</p>`)
     .join('')}</div>`;
+
+const appUrlOf = (env: Env) => (env.APP_URL || 'https://book.ndure.dk').replace(/\/$/, '');
+// Private link to one session's calendar file (for Apple Calendar and others).
+export const sessionToken = async (feedSecret: string, bookingId: string) => (await hmacHex(feedSecret, `session:${bookingId}`)).slice(0, 32);
 
 const CLAIM_MS = 3 * 60_000;
 const MAX_TRIES = 10; // with the waits below, about 17 hours of trying
@@ -29,18 +35,7 @@ export function teamEmails(env: Env): string[] {
   return (env.TEAM_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
-function ics(b: Booking): string {
-  const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//NDURE Labs//Bookings//EN', 'METHOD:PUBLISH',
-    'BEGIN:VEVENT', `UID:${b.id}@book.ndure.dk`, `DTSTAMP:${stamp(new Date().toISOString())}`,
-    `DTSTART:${stamp(b.start)}`, `DTEND:${stamp(b.end)}`, 'SUMMARY:NDURE Labs lactate session',
-    'LOCATION:Diplomvej 376\\, 2800 Kongens Lyngby', 'STATUS:CONFIRMED',
-    'END:VEVENT', 'END:VCALENDAR'
-  ].join('\r\n');
-}
-
-async function brevo(env: Env, to: string[], subject: string, text: string, attachment?: { name: string; content: string }) {
+async function brevo(env: Env, to: string[], subject: string, text: string, attachment?: { name: string; content: string }, html?: string) {
   if (!env.BREVO_API_KEY) throw new Error('BREVO_API_KEY not set');
   const res = await fetch(`${env.BREVO_API_BASE || 'https://api.brevo.com'}/v3/smtp/email`, {
     method: 'POST',
@@ -50,7 +45,7 @@ async function brevo(env: Env, to: string[], subject: string, text: string, atta
       to: to.map((email) => ({ email })),
       subject,
       textContent: text,
-      htmlContent: html(text),
+      htmlContent: html ?? plainHtml(text),
       ...(attachment ? { attachment: [{ name: attachment.name, content: btoa(attachment.content) }] } : {})
     })
   });
@@ -97,16 +92,29 @@ export async function deliver(env: Env, max: number): Promise<{ sent: number; fa
   });
   if (!work.jobs.length && !work.alerts.length) return { sent: 0, failed: 0 };
 
-  const appHost = (env.APP_URL || 'https://book.ndure.dk').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const appUrl = appUrlOf(env);
+  const from = env.EMAIL_FROM_ADDRESS || 'labs@ndure.dk';
   const results: Record<string, string | null> = {}; // email id → null when sent, else the error
   for (const { email: e, booking: b, customer: c } of work.jobs) {
+    const icsUrl = b ? `${appUrl}/calendar/session/${b.id}/${await sessionToken(peek.secrets.feed, b.id)}.ics` : undefined;
+    const method = e.template === 'cancelled' ? 'CANCEL' : 'REQUEST';
     try {
-      const attach = b && e.template !== 'cancelled' ? { name: 'ndure-labs-session.ics', content: ics(b) } : undefined;
-      await brevo(env, [e.to], e.subject, e.body.replace(/book\.ndure\.dk/g, appHost), attach);
+      const attach = b ? { name: e.template === 'cancelled' ? 'cancelled.ics' : 'invite.ics', content: sessionIcs(b, { method, to: e.to, from }) } : undefined;
+      const out = renderEmail(e, { appUrl, booking: b, icsUrl });
+      await brevo(env, [e.to], e.subject, out.text, attach, out.html);
       results[e.id] = null;
     } catch (err) {
       results[e.id] = String(err).slice(0, 300);
       continue;
+    }
+    // The team calendar gets its own invite for every booking, move and cancel. Best effort.
+    if (b && env.TEAM_CALENDAR_EMAIL) {
+      const t = teamDetails(b, c);
+      t.details = t.details.replace(/https?:\/\/book\.ndure\.dk|book\.ndure\.dk/g, appUrl);
+      const cal = env.TEAM_CALENDAR_EMAIL;
+      await brevo(env, [cal], `${method === 'CANCEL' ? 'Cancelled' : e.template === 'rescheduled' ? 'Moved' : 'Booked'}: ${t.title}, ${when(b.start)}`, t.details, { name: 'invite.ics', content: sessionIcs(b, { method, to: cal, from, uid: `team-${b.id}`, title: t.title, details: t.details }) }).catch((err) =>
+        console.error('Team calendar invite failed', err)
+      );
     }
     // Staff hear about changes to sessions in the next 48 hours. Best effort: a failure here
     // must not resend the rider's email.

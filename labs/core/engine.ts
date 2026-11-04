@@ -45,6 +45,20 @@ export function cleanEmail(v: unknown): string {
 export const icsText = (s: string) => clean(s, 200).replace(/[\\;,]/g, (m) => `\\${m}`);
 
 // Unguessable token for private links.
+export const dayOfWeek = (date: string) => new Date(date + 'T12:00:00Z').getUTCDay();
+// Every date from `from` to `to` (YYYY-MM-DD), at most a year.
+export function dateRange(from: string, to: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new LabsError('Pick a date.', 'date');
+  if (to < from) throw new LabsError('The end date is before the start date.', 'date');
+  const out: string[] = [];
+  for (let t = Date.parse(from + 'T12:00:00Z'); out.length <= 366; t += 86_400_000) {
+    const d = new Date(t).toISOString().slice(0, 10);
+    if (d > to) return out;
+    out.push(d);
+  }
+  throw new LabsError('Close at most a year at a time.', 'date');
+}
+
 export function randomId(bytes = 18): string {
   const a = new Uint8Array(bytes);
   crypto.getRandomValues(a);
@@ -147,7 +161,7 @@ export class Labs {
 
   private slotDef(start: string) {
     const ms = Date.parse(start);
-    const found = localStarts(ms, ms, this.config.days, this.config.blocks).find((s) => Date.parse(s.start) === ms);
+    const found = this.starts(ms, ms).find((s) => Date.parse(s.start) === ms);
     if (!found) return null;
     if (this.db.closed.some((c) => c.date === found.date)) return null;
     return { ...found, block: this.block(found.blockId) };
@@ -163,9 +177,10 @@ export class Labs {
     const now = this.now();
     const from = now + hours(opts.team ? 0 : this.config.minNoticeHours);
     const to = now + days(7 * this.config.bookingWeeksAhead);
-    return localStarts(from, to, this.config.days, this.config.blocks)
+    const opens = this.opensOn();
+    return this.starts(from, to)
       .filter((s) => !this.db.closed.some((c) => c.date === s.date))
-      .filter((s) => opts.team || !this.config.opensOn || s.date >= this.config.opensOn)
+      .filter((s) => opts.team || !opens || s.date >= opens)
       .map((s) => {
         const b = this.block(s.blockId);
         const taken = this.takenAt(s.start, opts);
@@ -192,8 +207,9 @@ export class Labs {
       const notice = h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
       throw new LabsError(`Sessions need to be booked at least ${notice} ahead.`, 'too_soon');
     }
-    if (!opts.team && this.config.opensOn && cphDate(ms) < this.config.opensOn) {
-      throw new LabsError(`Booking opens for sessions from ${fmt(this.config.opensOn + 'T12:00:00Z', { day: 'numeric', month: 'long' })}.`, 'not_open');
+    const opens = this.opensOn();
+    if (!opts.team && opens && cphDate(ms) < opens) {
+      throw new LabsError(`Booking opens for sessions from ${fmt(opens + 'T12:00:00Z', { day: 'numeric', month: 'long' })}.`, 'not_open');
     }
     const free = def.block.capacity - this.takenAt(start, opts);
     if (free < need) {
@@ -556,9 +572,78 @@ export class Labs {
   }
 
   closeDay(date: string, reason: string) {
-    const d = clean(date, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new LabsError('Pick a date.', 'date');
-    if (!this.db.closed.some((c) => c.date === d)) this.db.closed.push({ date: d, reason: clean(reason, LIMITS.reason) });
+    return this.closeDays(date, date, reason);
+  }
+
+  // ---------- opening hours ----------
+  // Which blocks are open on a weekday (0 Sunday … 6 Saturday): the team's choice, else config.
+  hoursFor(dow: number): string[] {
+    const set = this.db.hours?.[String(dow)];
+    if (set) return set.filter((id) => this.config.blocks.some((b) => b.id === id));
+    return this.config.days.includes(dow) ? this.config.blocks.map((b) => b.id) : [];
+  }
+
+  opensOn(): string | null {
+    return this.db.opensOn !== undefined ? this.db.opensOn || null : this.config.opensOn;
+  }
+
+  // Every possible session start in a window, by the weekly hours (closed days are not removed here).
+  private starts(fromMs: number, toMs: number) {
+    return localStarts(fromMs, toMs, [0, 1, 2, 3, 4, 5, 6], this.config.blocks).filter((s) => this.hoursFor(dayOfWeek(s.date)).includes(s.blockId));
+  }
+
+  setHours(input: unknown) {
+    if (!input || typeof input !== 'object') throw new LabsError('Pick the opening hours.', 'hours');
+    const ids = this.config.blocks.map((b) => b.id);
+    const next: Record<string, string[]> = {};
+    for (let d = 0; d < 7; d++) {
+      const v = (input as Record<string, unknown>)[String(d)];
+      next[String(d)] = Array.isArray(v) ? ids.filter((id) => v.includes(id)) : [];
+    }
+    if (!Object.values(next).some((v) => v.length)) throw new LabsError('Keep at least one session a week open.', 'hours');
+    this.db.hours = next;
+    return next;
+  }
+
+  setOpensOn(date: unknown) {
+    if (date === null || date === '') this.db.opensOn = '';
+    else if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) this.db.opensOn = date;
+    else throw new LabsError('Pick a date.', 'date');
+    return this.opensOn();
+  }
+
+  closeDays(from: string, to: string, reason: string) {
+    const days = dateRange(clean(from, 10), clean(to || from, 10));
+    const why = clean(reason, LIMITS.reason);
+    for (const d of days) {
+      const c = this.db.closed.find((x) => x.date === d);
+      if (c) c.reason = why || c.reason;
+      else this.db.closed.push({ date: d, reason: why });
+    }
+    this.db.closed.sort((a, b) => a.date.localeCompare(b.date));
+    // Sessions already booked on these days stay booked: the team moves or cancels them.
+    return this.db.bookings.filter((b) => b.status === 'booked' && days.includes(cphDate(Date.parse(b.start))));
+  }
+
+  reopenDays(from: string, to: string) {
+    const days = new Set(dateRange(clean(from, 10), clean(to || from, 10)));
+    this.db.closed = this.db.closed.filter((c) => !days.has(c.date));
+  }
+
+  // Day by day overview for the team's opening calendar.
+  schedule(fromDate: string, weeks: number) {
+    const out: { date: string; dow: number; blocks: string[]; closed: string | null; booked: number; before: boolean; past: boolean }[] = [];
+    const today = cphDate(this.now());
+    const opens = this.opensOn();
+    const start = Date.parse(fromDate + 'T12:00:00Z');
+    for (let i = 0; i < weeks * 7; i++) {
+      const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10);
+      const dow = dayOfWeek(date);
+      const c = this.db.closed.find((x) => x.date === date);
+      const booked = this.db.bookings.filter((b) => b.status === 'booked' && cphDate(Date.parse(b.start)) === date).reduce((n, b) => n + b.seats, 0);
+      out.push({ date, dow, blocks: this.hoursFor(dow), closed: c ? c.reason || 'Closed' : null, booked, before: !!opens && date < opens, past: date < today });
+    }
+    return out;
   }
 
   // ---------- login with an emailed code ----------
@@ -937,6 +1022,8 @@ export class Labs {
     const active = new Set([...this.db.orders.map((o) => o.customerId), ...this.db.bookings.map((b) => b.customerId)]);
     this.db.customers = this.db.customers.filter((c) => active.has(c.id) || Date.parse(c.createdAt) > orderCut);
     const ids = new Set(this.db.customers.map((c) => c.id));
+    const oldDay = cphDate(now - days(30));
+    this.db.closed = this.db.closed.filter((c) => c.date >= oldDay);
     this.db.contacts = this.db.contacts.filter((x) => !x.customerId || ids.has(x.customerId));
     // Old emails: keep only their key, so an automatic email never goes out twice.
     const emailCut = now - days(EMAIL_KEEP_DAYS);

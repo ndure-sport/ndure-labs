@@ -411,3 +411,33 @@ test('CRM: contacts need a name and a phone or email; unpaid checkouts are liste
   labs.removeLead(l.id);
   assert.equal(labs.db.contacts.length, 0);
 });
+
+test('opening: weekly hours, open date and closed periods set by the team', () => {
+  const { labs } = setup();
+  // Default: Tuesday to Friday, morning and afternoon.
+  assert.deepEqual(labs.hoursFor(1), []);
+  assert.deepEqual(labs.hoursFor(2), ['am', 'pm']);
+  // Mondays mornings open, Fridays closed.
+  labs.setHours({ 1: ['am'], 2: ['am', 'pm'], 3: ['am', 'pm'], 4: ['am', 'pm'], 5: [] });
+  const slots = labs.slots(1);
+  assert.ok(slots.some((s) => s.start === '2026-12-07T09:30:00+01:00'), 'Monday morning');
+  assert.ok(!slots.some((s) => s.start === '2026-12-07T13:00:00+01:00'), 'not Monday afternoon');
+  assert.ok(!slots.some((s) => s.start.startsWith('2026-12-04')), 'no Friday');
+  assert.throws(() => labs.setHours({}), /at least one/);
+  // A booked day can be closed: the booking stays and is reported, new bookings are refused.
+  labs.paid(labs.checkout(rider('a@x.dk', { start: '2026-12-08T09:30:00+01:00' })).id);
+  const clash = labs.closeDays('2026-12-08', '2026-12-10', 'Christmas party');
+  assert.equal(clash.length, 1);
+  assert.equal(labs.db.closed.length, 3);
+  assert.ok(!labs.slots(1).some((s) => s.start.startsWith('2026-12-09')));
+  assert.throws(() => labs.checkout(rider('b@x.dk', { start: '2026-12-09T09:30:00+01:00' })), /no session/);
+  assert.equal(labs.schedule('2026-12-07', 1).find((d) => d.date === '2026-12-08')!.booked, 1);
+  labs.reopenDays('2026-12-09', '2026-12-10');
+  assert.equal(labs.db.closed.length, 1);
+  assert.throws(() => labs.closeDays('2026-12-10', '2026-12-01', ''), /before/);
+  // Open date from the team overrides the default.
+  labs.setOpensOn('2026-12-15');
+  assert.ok(labs.slots(1).every((s) => s.start >= '2026-12-15'));
+  labs.setOpensOn(null);
+  assert.equal(labs.opensOn(), null);
+});

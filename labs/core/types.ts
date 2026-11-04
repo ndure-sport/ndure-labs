@@ -130,11 +130,13 @@ export type Db = {
   teamSv: Record<string, number>; // session version per team email
   leads: Lead[];
   contacts: Contact[];
+  hours: Record<string, string[]> | null; // per weekday (0 Sunday … 6 Saturday): open session blocks; null = the defaults in config
+  opensOn?: string; // first bookable day for riders, set by the team ('' = no limit); missing = config
 };
 
 export const emptyDb = (): Db => ({
   seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [],
-  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: []
+  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: [], hours: null
 });
 
 // Fills in fields added after the data was first saved.

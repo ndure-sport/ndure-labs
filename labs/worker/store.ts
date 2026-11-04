@@ -19,6 +19,7 @@ export type Env = {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   BREVO_API_KEY: string;
+  TEAM_CALENDAR_EMAIL?: string; // optional: every booking also goes as an invite to this calendar (a shared Outlook calendar)
   ALLOW_LIVE_PAYMENTS?: string; // set to "yes" only on launch day
   // Only for local testing against fake services.
   TURNSTILE_SITE_KEY?: string; // public key for the bot check on the pages

@@ -10,6 +10,7 @@ import { api, ApiError, getConfig, Msg, Turnstile, Header, Footer, type Note } f
 import { Landing } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
 import { FollowUp, Contacts, Sales, type CrmData } from './crm';
+import { Opening, type OpeningData } from './opening';
 
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const time = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
@@ -301,6 +302,7 @@ type TeamData = {
   alerts: { at: string; kind: string; text: string }[];
   audit: { at: string; by: string; action: string; detail: string }[];
   crm: CrmData;
+  opening: OpeningData;
 };
 
 function Team() {
@@ -312,9 +314,8 @@ function Team() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [give, setGive] = useState({ email: '', name: '', qty: 1 });
-  const [close, setClose] = useState({ date: '', reason: '' });
-  type Tab = 'sessions' | 'follow' | 'contacts' | 'sales' | 'admin';
-  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'follow', 'contacts', 'sales', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
+  type Tab = 'sessions' | 'opening' | 'follow' | 'contacts' | 'sales' | 'admin';
+  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'opening', 'follow', 'contacts', 'sales', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
   const setTab = (x: Tab) => { setTabState(x); setNote(null); history.replaceState(null, '', `/team#${x}`); };
 
   const load = useCallback(async () => {
@@ -360,7 +361,7 @@ function Team() {
         <div className="msg err">Some emails could not be sent{t.emailErrors.some((e) => !e.gaveUp) ? ' (retrying automatically)' : ''}: {t.emailErrors.map((e) => `${e.subject} to ${e.to}${e.gaveUp ? ' (gave up)' : ''}`).join('; ')}. Check the Brevo key, sender and daily limit.</div>
       )}
       <nav className="tabs" aria-label="Team">
-        {([['sessions', 'Sessions'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['admin', 'Admin']] as const).map(([k, l]) => {
+        {([['sessions', 'Sessions'], ['opening', 'Opening hours'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['admin', 'Admin']] as const).map(([k, l]) => {
           const n = k === 'follow' ? t.crm.riders.filter((r) => r.followUpDue || r.status === 'due' || r.status === 'never_came').length : k === 'contacts' ? t.crm.leads.filter((l) => l.followUpDue).length : 0;
           return <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}{n > 0 && <span className="badge">{n}</span>}</button>;
         })}
@@ -436,6 +437,7 @@ function Team() {
 
         </>
       )}
+      {tab === 'opening' && <Opening o={t.opening} act={act} />}
       {tab === 'follow' && <FollowUp crm={t.crm} act={act} />}
       {tab === 'contacts' && <Contacts crm={t.crm} act={act} />}
       {tab === 'sales' && <Sales crm={t.crm} />}
@@ -469,17 +471,6 @@ function Team() {
             <label>Sessions<input type="number" min={1} max={10} value={give.qty} onChange={(e) => setGive({ ...give, qty: Number(e.target.value) })} /></label>
           </div>
           <button onClick={() => act({ action: 'give', ...give }, `${give.qty} free sessions added. They log in with their email to book.`)}>Add sessions</button>
-        </section>
-        <section className="card">
-          <h3>Close a day</h3>
-          <div className="row">
-            <label>Date<input type="date" value={close.date} onChange={(e) => setClose({ ...close, date: e.target.value })} /></label>
-            <label>Reason<input value={close.reason} onChange={(e) => setClose({ ...close, reason: e.target.value })} /></label>
-          </div>
-          <button onClick={() => act({ action: 'close', ...close }, 'Day closed.')}>Close day</button>
-          {t.closed.map((c) => (
-            <p key={c.date} className="small">{c.date} {c.reason} <button onClick={() => act({ action: 'reopen', date: c.date }, 'Day reopened.')}>Reopen</button></p>
-          ))}
         </section>
       </div>
 

@@ -7,7 +7,8 @@ import { cphDate, fmt, when } from '../core/time';
 import { change, read, readWithSize, Conflict, type Env, type State } from './store';
 import { sign, verify, getCookie, cookie, sixDigits } from './auth';
 import { createCheckout, verifyStripe, paidCheckoutOrders } from './stripe';
-import { deliver, teamEmails, sendStaff, dailySummary } from './email';
+import { deliver, teamEmails, sendStaff, dailySummary, sessionToken } from './email';
+import { sessionIcs } from './mail';
 
 const config: Config = DEFAULT_CONFIG;
 const engine = (s: State) => new Labs(s.db, config, () => Date.now());
@@ -358,6 +359,16 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
           lastPaidOrder: c.orders.filter((o) => o.status === 'paid' && !o.free).at(-1)?.id ?? null
         })),
         closed: st.db.closed,
+        opening: (() => {
+          const now = new Date();
+          const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
+          return {
+            blocks: config.blocks.map((x) => ({ id: x.id, label: x.label, time: x.time, capacity: x.capacity })),
+            hours: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, e.hoursFor(d)])),
+            opensOn: e.opensOn(),
+            days: e.schedule(monday.toISOString().slice(0, 10), 13)
+          };
+        })(),
         calendarUrl: `${appUrl}/calendar/${st.secrets.feed}.ics`,
         emailErrors: st.db.emails.filter((x) => x.error && !x.sent).slice(-10).map((x) => ({ to: x.to, subject: x.subject, error: x.error, gaveUp: !!x.failed })),
         status: {
@@ -425,13 +436,22 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
             return e.audit(me, 'close order', `${o.id}, ${st.db.customers.find((c) => c.id === o.customerId)?.email}, ${e.money(o.total)}`);
           }
           case 'close': {
-            e.closeDay(String(b.date ?? ''), String(b.reason ?? ''));
-            return e.audit(me, 'close day', clean(b.date, 10));
+            const from = clean(b.from ?? b.date, 10), to = clean(b.to ?? b.from ?? b.date, 10);
+            e.closeDays(from, to, String(b.reason ?? ''));
+            return e.audit(me, 'close', from === to ? from : `${from} to ${to}`);
           }
           case 'reopen': {
-            const d = clean(b.date, 10);
-            st.db.closed = st.db.closed.filter((c) => c.date !== d);
-            return e.audit(me, 'reopen day', d);
+            const from = clean(b.from ?? b.date, 10), to = clean(b.to ?? b.from ?? b.date, 10);
+            e.reopenDays(from, to);
+            return e.audit(me, 'reopen', from === to ? from : `${from} to ${to}`);
+          }
+          case 'hours': {
+            e.setHours(b.hours);
+            return e.audit(me, 'opening hours', JSON.stringify(st.db.hours));
+          }
+          case 'opens_on': {
+            const d = e.setOpensOn(b.date ?? null);
+            return e.audit(me, 'bookings open from', d ?? 'no limit');
           }
           // ---------- CRM ----------
           case 'lead_save': {
@@ -481,7 +501,16 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
 // Team calendar feed: a private link the team subscribes to in Outlook or Google.
 async function calendar(req: Request, env: Env): Promise<Response> {
   const s = await read(env);
-  const token = new URL(req.url).pathname.replace('/calendar/', '').replace(/\.ics$/, '');
+  const path = new URL(req.url).pathname;
+  // One session, from the "Apple / other" link in the booking email.
+  const one = path.match(/^\/calendar\/session\/([\w-]{1,40})\/([a-f0-9]{32})\.ics$/);
+  if (one) {
+    const b = s.db.bookings.find((x) => x.id === one[1]);
+    if (!b || one[2] !== (await sessionToken(s.secrets.feed, b.id))) return new Response('Not found', { status: 404, headers: SECURITY });
+    const ics = sessionIcs(b, { method: b.status === 'cancelled' ? 'CANCEL' : 'PUBLISH', from: env.EMAIL_FROM_ADDRESS || 'labs@ndure.dk' });
+    return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ndure-labs-session.ics"', 'Cache-Control': 'no-store', ...SECURITY } });
+  }
+  const token = path.replace('/calendar/', '').replace(/\.ics$/, '');
   if (token !== s.secrets.feed) return new Response('Not found', { status: 404, headers: SECURITY });
   return new Response(engine(s).calendarFeed(), { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY } });
 }
