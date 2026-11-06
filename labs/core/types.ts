@@ -44,6 +44,7 @@ export type Order = {
   partnerConsents?: Consents | null;
   partnerPhone?: string | null;
   late?: boolean; // payment confirmed after the seat hold had run out
+  parentId?: string | null; // extra sessions added to this pack from the account
 };
 
 export type Booking = {

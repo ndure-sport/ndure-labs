@@ -7,7 +7,8 @@ import { days, hours } from './time.ts';
 
 // A fixed clock: Monday 30 November 2026, 10:00 Copenhagen.
 // Most tests book close to "now", so they run with a short notice period; the 1 week rule has its own test.
-const TEST_CONFIG: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12, opensOn: null };
+// Every automatic email on in the tests, so they all keep being tested.
+const TEST_CONFIG: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12, opensOn: null, emails: { ...DEFAULT_CONFIG.emails, off: [] } };
 function setup(config = TEST_CONFIG) {
   let now = Date.parse('2026-11-30T10:00:00+01:00');
   const labs = new Labs(emptyDb(), config, () => now);
@@ -489,4 +490,45 @@ test('emails: more than 40 automatic emails in one run pauses them all and alert
   assert.equal(labs.db.emails.filter((e) => e.template === 'reminder').length, 45, 'sent after the team said yes');
   // Essential emails still work while paused.
   assert.ok(labs.db.emails.some((e) => e.template === 'confirmation'));
+});
+
+test('adding sessions: pay the difference to the bigger pack, expire with the pack', () => {
+  const { labs } = setup();
+  const snap = labs.checkout(rider('s@x.dk', { qty: 1, start: labs.slots()[0].start }));
+  labs.paid(snap.id);
+  const c = snap.customerId;
+  const offer = labs.topUpOffer(c)!;
+  assert.equal(offer.has, 1);
+  assert.equal(offer.max, 5);
+  assert.equal(offer.options.find((o) => o.n === 2)!.price, 806); // 1,305 for 3 minus 499 paid
+  assert.equal(offer.options.find((o) => o.n === 1)!.price, 499);
+  assert.equal(offer.options.find((o) => o.n === 5)!.price, 6 * 375 - 499);
+  assert.throws(() => labs.topUp(c, 6), /add 1 to 5/);
+  assert.throws(() => labs.topUp(c, 1.5), /add 1 to 5/);
+  const add = labs.topUp(c, 2);
+  assert.equal(add.total, 806);
+  assert.equal(labs.balance(c).total, 0); // not before paying
+  labs.paid(add.id);
+  assert.equal(labs.balance(c).total, 2);
+  assert.equal(labs.order(add.id).expiresAt, labs.order(snap.id).expiresAt);
+  // Now 3 bought for 1,305: one more costs 435, like a 4 session pack at the Progress price.
+  assert.equal(labs.topUpOffer(c)!.options[0].price, 435);
+  assert.equal(labs.topUpOffer(c)!.has, 3);
+  // A full Season pack can't add more.
+  const s = labs.checkout(rider('season@x.dk', { qty: 6, later: true }));
+  labs.paid(s.id);
+  assert.equal(labs.topUpOffer(s.customerId), null);
+  // Free sessions from the team are not a pack to add to.
+  const g = labs.giveSessions({ email: 'gift@x.dk', name: 'Gift', qty: 1 });
+  assert.equal(labs.topUpOffer(g.customerId), null);
+});
+
+test('emails: the off list in the config stops those automatic emails', () => {
+  const { labs, tick } = setup({ ...TEST_CONFIG, emails: { ...TEST_CONFIG.emails, off: ['after', 'reminder'] } });
+  const o = labs.checkout(rider('off@x.dk', { qty: 1, start: labs.slots()[3].start }));
+  labs.paid(o.id);
+  for (let i = 0; i < 40; i++) tick(6 * 3_600_000);
+  const sent = labs.db.emails.filter((e) => e.to === 'off@x.dk').map((e) => e.template);
+  assert.ok(sent.includes('confirmation'));
+  assert.ok(!sent.includes('after') && !sent.includes('reminder'), sent.join(','));
 });

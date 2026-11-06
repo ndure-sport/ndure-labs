@@ -91,7 +91,7 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
   const cta =
     e.template === 'partner' && partner ? button(partner.startsWith('http') ? partner : `https://${partner}`, 'Give your consent')
     : ['payment', 'confirmation', 'rescheduled', 'cancelled', 'checkin', 'nudge', 'expiry'].includes(e.template) ? button(account, e.template === 'cancelled' || e.template === 'nudge' || e.template === 'checkin' || e.template === 'expiry' ? 'Book a session' : 'Open my account')
-    : e.template === 'reminder' ? button(MAPS, 'Directions', false)
+    : e.template === 'reminder' ? button(account, 'Manage booking') + ' ' + button(MAPS, 'Directions', false)
     : '';
   const card = x.booking && ['confirmation', 'rescheduled', 'reminder'].includes(e.template) ? sessionCard(x.booking) + (x.icsUrl && e.template !== 'reminder' ? calendarLinks(x.booking, x.icsUrl) : '') : '';
 
@@ -101,7 +101,7 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F4F4"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;font-family:${FONT}">
   <tr><td style="background:#000000;border-radius:20px 20px 0 0;padding:20px 28px">
-    <span style="color:#FFFFFF;font-weight:700;font-size:16px;letter-spacing:0.02em">NDURE</span> <span style="color:#FFFFFF;background:${BLUE};font-weight:600;font-size:11px;letter-spacing:0.14em;padding:3px 7px;border-radius:4px">LABS</span>
+    <img src="${esc(x.appUrl)}/img/ndure-logo.png" alt="NDURE" width="40" height="40" style="width:40px;height:40px;border-radius:50%;display:inline-block;vertical-align:middle;border:1px solid #333333"> <span style="color:#FFFFFF;background:${BLUE};font-weight:600;font-size:11px;letter-spacing:0.14em;padding:3px 7px;border-radius:4px">LABS</span>
   </td></tr>
   <tr><td style="background:#FFFFFF;padding:32px 28px 28px;border-radius:0 0 20px 20px;color:#111111;font-size:16px;line-height:1.55">
     ${e.template === 'login_code' ? '' : `<h1 style="margin:0 0 20px;font-size:26px;line-height:1.2;font-weight:600;letter-spacing:-0.02em;color:#000000">${esc(e.subject)}</h1>`}

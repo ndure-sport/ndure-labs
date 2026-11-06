@@ -5,7 +5,7 @@ import type { Order } from '../core/types';
 import type { Config } from '../core/config';
 import { hmacHex } from './auth';
 
-export async function createCheckout(env: Env, config: Config, order: Order, email: string, appUrl: string): Promise<string> {
+export async function createCheckout(env: Env, config: Config, order: Order, email: string, appUrl: string, cancelPath = '/?cancelled=1'): Promise<string> {
   // Safety lock: real payments only once ALLOW_LIVE_PAYMENTS is deliberately set to "yes" for launch.
   const key = env.STRIPE_SECRET_KEY || '';
   if (/^(sk|rk)_live_/.test(key) && env.ALLOW_LIVE_PAYMENTS !== 'yes') {
@@ -21,14 +21,22 @@ export async function createCheckout(env: Env, config: Config, order: Order, ema
   f.set('allow_promotion_codes', 'true');
   f.set('locale', 'auto');
   f.set('success_url', `${appUrl}/account?paid=${order.id}`);
-  f.set('cancel_url', `${appUrl}/?cancelled=1`);
+  f.set('cancel_url', `${appUrl}${cancelPath}`);
   // Stripe's minimum. The seat hold lasts 35 minutes, a little longer.
   f.set('expires_at', String(Math.floor(Date.now() / 1000) + 31 * 60));
   let i = 0;
-  f.set(`line_items[${i}][quantity]`, String(order.qty));
-  f.set(`line_items[${i}][price_data][currency]`, cur);
-  f.set(`line_items[${i}][price_data][unit_amount]`, String(Math.round(order.unit * 100)));
-  f.set(`line_items[${i}][price_data][product_data][name]`, order.qty > 1 ? `NDURE Labs, ${order.qty} lactate sessions` : 'NDURE Labs lactate session');
+  if (order.parentId) {
+    // Extra sessions for a pack: one line with the exact difference, so cents never round.
+    f.set(`line_items[${i}][quantity]`, '1');
+    f.set(`line_items[${i}][price_data][currency]`, cur);
+    f.set(`line_items[${i}][price_data][unit_amount]`, String(Math.round(order.total * 100)));
+    f.set(`line_items[${i}][price_data][product_data][name]`, `NDURE Labs, ${order.qty} extra ${order.qty === 1 ? 'session' : 'sessions'}`);
+  } else {
+    f.set(`line_items[${i}][quantity]`, String(order.qty));
+    f.set(`line_items[${i}][price_data][currency]`, cur);
+    f.set(`line_items[${i}][price_data][unit_amount]`, String(Math.round(order.unit * 100)));
+    f.set(`line_items[${i}][price_data][product_data][name]`, order.qty > 1 ? `NDURE Labs, ${order.qty} lactate sessions` : 'NDURE Labs lactate session');
+  }
   if (order.partner) {
     i++;
     f.set(`line_items[${i}][quantity]`, '1');

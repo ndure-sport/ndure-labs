@@ -106,6 +106,15 @@ export function quote(config: Config, qty: number, partner: boolean): Quote {
   return { qty: n, unit, single, saving, total: lines.reduce((s, l) => s + l.amount, 0), lines, next: next ? { more: next.min - n, unit: next.unit } : null };
 }
 
+// Price per session for a number of sessions, by the tiers (any number, not only the packs).
+export function tierUnit(config: Config, n: number): number {
+  let unit = 0;
+  for (const t of [...config.tiers].sort((a, b) => a.min - b.min)) if (n >= t.min || unit === 0) unit = t.unit;
+  return unit;
+}
+
+export type TopUpOffer = { parentId: string; has: number; max: number; expiresAt: string; options: { n: number; price: number; unit: number }[] };
+
 type Now = () => number;
 
 export class Labs {
@@ -342,13 +351,16 @@ export class Labs {
     o.status = 'paid';
     o.paidAt = this.iso();
     o.expiresAt = this.iso(addMonths(this.now(), this.config.validityMonths));
+    const parent = o.parentId ? this.db.orders.find((x) => x.id === o.parentId) : undefined;
+    if (parent?.expiresAt) o.expiresAt = parent.expiresAt; // added sessions expire with their pack
     o.remaining = o.qty;
     if (late) o.late = true;
     const c = this.customer(o.customerId);
     if (!c.consents && o.consents) c.consents = o.consents;
     // A second paid order for a rider who never proved their email: no more automatic logins,
     // and any browser logged in that way is logged out (someone else may have used the email).
-    if (!o.free && !c.verified && this.db.orders.some((x) => x.id !== o.id && x.customerId === c.id && x.status === 'paid' && !x.free)) {
+    // Extra sessions bought from inside the account are no new claim on the email: skip.
+    if (!o.free && !o.parentId && !c.verified && this.db.orders.some((x) => x.id !== o.id && x.customerId === c.id && x.status === 'paid' && !x.free && !x.parentId)) {
       if (o.newCustomer) o.newCustomer = false;
       c.sv = (c.sv ?? 0) + 1;
     }
@@ -357,7 +369,7 @@ export class Labs {
       'payment',
       `payment:${o.id}`,
       'Payment received, NDURE Labs',
-      `Hi ${c.name.split(' ')[0]},\n\nThanks, we received ${this.money(o.total)} for ${o.qty} ${o.qty === 1 ? 'session' : 'sessions'}${o.partner ? ' and a training partner' : ''}. They are valid until ${fmt(o.expiresAt, { day: 'numeric', month: 'long', year: 'numeric' })}.\n\nLog in with your email at book.ndure.dk/account to book, change or cancel sessions.`
+      `Hi ${c.name.split(' ')[0]},\n\nThanks, we received ${this.money(o.total)} for ${o.qty} ${o.parentId ? 'extra ' : ''}${o.qty === 1 ? 'session' : 'sessions'}${o.partner ? ' and a training partner' : ''}. They are valid until ${fmt(o.expiresAt, { day: 'numeric', month: 'long', year: 'numeric' })}.\n\nLog in with your email at book.ndure.dk/account to book, change or cancel sessions.`
     );
     if (o.firstStart) {
       try {
@@ -384,6 +396,45 @@ export class Labs {
         `A payment arrived after the seat hold ran out: ${c.name} (${c.email}), ${this.money(o.total)}, order ${o.id}. ${o.firstStart ? (o.firstStatus === 'booked' ? 'The picked session was still free and is booked.' : 'The picked session was gone, the rider was asked to pick another time.') : 'The sessions are in the account.'}`
       );
     }
+    return o;
+  }
+
+  // ---------- adding sessions to a pack ----------
+  // A rider can add sessions to their latest pack and pays the difference to what the bigger pack
+  // would have cost in total. A Snapshot (499 kr) plus 2 costs 806 kr: exactly the Progress price of 1,305 kr.
+  // Added sessions expire together with the pack. At most maxQty sessions per pack.
+  topUpOffer(customerId: string): TopUpOffer | null {
+    const now = this.now();
+    const parent = this.db.orders
+      .filter((o) => o.customerId === customerId && o.status === 'paid' && !o.free && !o.parentId && o.expiresAt && Date.parse(o.expiresAt) > now)
+      .sort((a, b) => Date.parse(b.paidAt ?? b.createdAt) - Date.parse(a.paidAt ?? a.createdAt))[0];
+    if (!parent) return null;
+    const extra = this.db.orders.filter((o) => o.parentId === parent.id && o.status === 'paid');
+    const has = parent.qty + extra.reduce((n, o) => n + o.qty, 0);
+    const paid = parent.total - (parent.partner ? this.config.partnerPrice : 0) + extra.reduce((n, o) => n + o.total, 0);
+    const max = this.config.maxQty - has;
+    if (max < 1) return null;
+    const options = Array.from({ length: max }, (_, i) => {
+      const n = i + 1;
+      const price = Math.max(0, tierUnit(this.config, has + n) * (has + n) - paid);
+      return { n, price, unit: Math.round((price / n) * 100) / 100 };
+    });
+    return { parentId: parent.id, has, max, expiresAt: parent.expiresAt!, options };
+  }
+
+  topUp(customerId: string, qty: number): Order {
+    const offer = this.topUpOffer(customerId);
+    if (!offer) throw new LabsError('Adding sessions is not possible right now. Buy a new pack on the Labs page, or email contact@ndure.dk.', 'topup');
+    const n = Number(qty);
+    const opt = offer.options.find((x) => x.n === n);
+    if (!opt) throw new LabsError(`You can add 1 to ${offer.max} sessions.`, 'qty');
+    if (opt.price <= 0) throw new LabsError('Email contact@ndure.dk to add these sessions.', 'topup');
+    const o: Order = {
+      id: this.id('o'), customerId, status: 'pending', qty: n, unit: opt.unit, total: opt.price, remaining: 0,
+      partner: false, partnerName: null, partnerEmail: null, partnerUsed: false, free: false, src: 'account',
+      createdAt: this.iso(), paidAt: null, expiresAt: null, firstStart: null, firstStatus: 'none', newCustomer: false, parentId: offer.parentId
+    };
+    this.db.orders.push(o);
     return o;
   }
 
@@ -738,6 +789,7 @@ export class Labs {
       upcoming: upcoming.map((b) => ({ ...b, changeable: Date.parse(b.start) - now >= hours(this.config.changeDeadlineHours) })),
       past,
       nextDue,
+      topUp: this.topUpOffer(customerId),
       orders: this.db.orders.filter((o) => o.customerId === customerId && o.status !== 'pending' && o.status !== 'expired')
     };
   }
@@ -984,7 +1036,7 @@ export class Labs {
     }
     this.db.holds = this.db.holds.filter((h) => Date.parse(h.expiresAt) > now);
     this.cleanUp();
-    const on = (t: Email['template']) => !this.db.autoPaused && !this.db.emailOff.includes(t);
+    const on = (t: Email['template']) => !this.db.autoPaused && !this.db.emailOff.includes(t) && !(this.config.emails.off ?? []).includes(t);
     const contactsBefore = this.db.contacts.length;
 
     for (const b of this.db.bookings) {
@@ -1038,7 +1090,7 @@ export class Labs {
       this.db.emails = this.db.emails.filter((e) => !ids.has(e.id));
       this.db.contacts.splice(contactsBefore);
       this.db.autoPaused = { at: this.iso(), count: auto.length, keys: auto.map((e) => e.key).slice(0, 2000) };
-      this.alert('emails_paused', `${auto.length} automatic emails were about to go out at once, so all automatic emails are paused. Check the Emails tab on the team page, then resume.`);
+      this.alert('emails_paused', `${auto.length} automatic emails were about to go out at once, so all automatic emails are paused. Check the Admin tab on the team page, then resume.`);
     }
     return this.db.emails.slice(before);
   }

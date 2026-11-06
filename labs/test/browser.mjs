@@ -37,7 +37,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   page.on('pageerror', (e) => errors.push(e.message));
   // The browser logs every 4xx as an error; expected API answers (401 logged out) are fine, the rest is not.
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
-  page.on('response', (r) => { if (r.status() >= 400 && !(r.status() === 401 && r.url().includes('/api/me'))) errors.push(`${r.status()} ${r.url()}`); });
+  page.on('response', (r) => { if (r.status() >= 400 && !(r.status() === 401 && /\/api\/(me|team)$/.test(new URL(r.url()).pathname))) errors.push(`${r.status()} ${r.url()}`); });
   let stripeUrl = null;
   await page.route('https://checkout.stripe.test/**', (r) => { stripeUrl = r.request().url(); r.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Fake Stripe</h1>' }); });
 
@@ -69,18 +69,20 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.locator('.faq summary').first().click();
   ok('FAQ answer opens', await page.locator('.faq details').first().evaluate((d) => d.open));
 
-  // Booking: choose Snapshot first to check the single plan has no "later" option, then go back.
+  // Booking: Snapshot first, then back and Progress.
   await page.getByRole('button', { name: 'Choose Snapshot' }).click();
   ok('step 2 opens', await page.getByText('Pick your session', { exact: true }).isVisible());
-  ok('no "choose later" for a single session', (await page.locator('.later').count()) === 0);
+  ok('no "choose later" any more', (await page.getByText('Choose dates later').count()) === 0);
   ok('Next is locked until a time is picked', await page.getByRole('button', { name: 'Next: your details' }).isDisabled());
-  await page.getByRole('button', { name: 'Change sessions' }).click();
+  await page.getByRole('button', { name: '‹ Back' }).click();
   await page.getByRole('button', { name: 'Choose Progress' }).click();
-  ok('Progress: choose later is offered', (await page.locator('.later').count()) === 1);
-  const firstDay = await page.locator('.day').first().getAttribute('aria-label');
+  ok('Progress: other sessions are booked later from the account', await page.getByText('Your other 2 sessions you book later').isVisible());
+  ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
+  const firstDay = await page.locator('button.mday').first().getAttribute('aria-label');
   ok('first bookable day is on or after 1 December', /December|January|February/.test(firstDay), firstDay);
-  await page.locator('.day').nth(1).click();
-  await page.locator('.time').first().click();
+  ok('summary shows the full address', (await page.locator('.sum').innerText()).includes('2800 Kongens Lyngby'));
+  await page.locator('button.mday').nth(1).click();
+  await page.locator('.tslot').first().click();
   ok('summary shows the picked time', !(await page.locator('.sum').innerText()).includes('Not chosen yet'));
   ok('summary total is 1,305 kr', (await page.locator('.sum .tot').innerText()).includes('1,305 kr'));
   await shot(page, `${label}-2-date`);
@@ -117,17 +119,36 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.goto(`${BASE}/account?paid=${orderId}`, { waitUntil: 'networkidle' });
   await page.getByText('Hi Browser').waitFor({ timeout: 15000 }).catch(() => {});
   ok('back from Stripe: logged in', await page.getByText('Hi Browser').isVisible());
-  ok('first session is booked, 2 left', (await page.locator('.item').count()) >= 1 && (await page.locator('.bignum').innerText()) === '2');
+  ok('first session is booked, 2 left', (await page.locator('.scard').count()) >= 1 && (await page.locator('.bignum').innerText()) === '2');
   await shot(page, `${label}-4-account`);
   const conf = lastEmail(email);
   ok('confirmation email sent', !!conf, conf?.subject);
 
+  ok('session card shows where and what to bring', (await page.locator('.scard').first().innerText()).includes('Cycling shoes'));
+  ok('add to calendar links', (await page.locator('.cal-links a').count()) === 3);
+  ok('add sessions at the pack price: 1 more is 435 kr', (await page.getByRole('button', { name: /^Add 1 session, pay/ }).innerText()) === 'Add 1 session, pay 435 kr');
+
   // Book a second session from the account.
   await page.getByRole('button', { name: 'Book a session' }).click();
-  await page.locator('.pday button').nth(2).click();
-  await page.getByRole('button', { name: 'Confirm' }).click();
+  await page.locator('#picker button.mday').nth(2).click();
+  await page.locator('#picker .tslot').first().click();
+  await shot(page, `${label}-5-account-book`);
+  await page.getByRole('button', { name: /^Book \w+day/ }).click();
   await page.getByText('Booked. A confirmation is on its way.').waitFor({ timeout: 10000 }).catch(() => {});
   ok('second session booked from the account, 1 left', (await page.locator('.bignum').innerText()) === '1');
+
+  // Add 2 sessions: Stripe, then they are in the account.
+  stripeUrl = null;
+  await page.locator('.stp[aria-label="One more"]').click();
+  ok('2 more is 870 kr', (await page.getByRole('button', { name: /^Add 2 sessions/ }).innerText()) === 'Add 2 sessions, pay 870 kr');
+  await page.getByRole('button', { name: /^Add 2 sessions/ }).click();
+  await page.waitForURL('https://checkout.stripe.test/**', { timeout: 15000 }).catch(() => {});
+  const addId = stripeUrl?.split('/').pop();
+  ok('add sessions goes to Stripe', !!addId);
+  ok('extra sessions paid', (await webhook(addId)) === 200);
+  await page.goto(`${BASE}/account?paid=${addId}`, { waitUntil: 'networkidle' });
+  await page.getByText('Hi Browser').waitFor({ timeout: 15000 }).catch(() => {});
+  ok('3 sessions left after adding 2', (await page.locator('.bignum').innerText()) === '3');
 
   // Log out and in again with the emailed code.
   await page.getByRole('button', { name: 'Log out', exact: true }).click();
@@ -150,6 +171,22 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.locator('.hdr a.btn:not(.ghost)').click();
   await page.waitForURL(BASE + '/#book');
   ok('Book from a sub page returns to the booking', page.url().endsWith('/#book'));
+
+  // Team page: log in, the three tabs, the rider in the sessions list.
+  if (label === 'desktop') {
+    await page.goto(BASE + '/team', { waitUntil: 'networkidle' });
+    await page.getByLabel('Email').fill('team@ndure.dk');
+    await page.getByRole('button', { name: 'Send code' }).click();
+    await page.waitForTimeout(1500);
+    const tcode = lastEmail('team@ndure.dk')?.subject.match(/\d{6}/)?.[0];
+    await page.getByLabel('Code').fill(tcode || '');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await page.getByText('Upcoming sessions').waitFor({ timeout: 10000 }).catch(() => {});
+    ok('team tabs: Sessions, Opening hours, Admin', (await page.locator('nav.tabs button').allInnerTexts()).join('|') === 'Sessions|Opening hours|Admin', (await page.locator('nav.tabs button').allInnerTexts()).join('|'));
+    ok('team list shows the rider with Move date', (await page.locator('.srow', { hasText: 'Browser Rider' }).count()) >= 1 && (await page.getByRole('button', { name: '↔ Move date' }).count()) >= 1);
+    ok('free spots can be booked', (await page.getByRole('button', { name: '+ Book a rider' }).count()) >= 1);
+    await shot(page, `${label}-6-team`);
+  }
 
   ok('no script errors', errors.length === 0, errors.join(' | '));
   if (label === 'phone') ok('no sideways scrolling on a phone', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));

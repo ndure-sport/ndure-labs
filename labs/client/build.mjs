@@ -28,6 +28,7 @@ mkdirSync(path.join(out, 'img'), { recursive: true });
 const fontDir = path.join(here, '..', 'node_modules', '@fontsource-variable', 'inter', 'files');
 for (const f of ['inter-latin-wght-normal.woff2', 'inter-latin-ext-wght-normal.woff2']) copyFileSync(path.join(fontDir, f), path.join(out, 'fonts', f));
 copyFileSync(path.join(here, 'assets', 'labs-session.jpg'), path.join(out, 'img', 'labs-session.jpg'));
+copyFileSync(path.join(here, 'assets', 'ndure-logo.png'), path.join(out, 'img', 'ndure-logo.png'));
 writeFileSync(
   path.join(out, 'index.html'),
   `<!doctype html>

@@ -92,7 +92,7 @@ export function Header({ home = false }: { home?: boolean }) {
   return (
     <header className="hdr">
       <div className="hdr-in">
-        <a href="/" className="brand" aria-label="NDURE Labs, home">NDURE <span>LABS</span></a>
+        <a href="/" className="brand" aria-label="NDURE Labs, home"><img src="/img/ndure-logo.png" alt="NDURE" width="32" height="32" /><span>LABS</span></a>
         <nav aria-label="Main">
           <a className="n" href={h('#back')}>Why come back</a>
           <a className="n" href={h('#book')}>Prices</a>

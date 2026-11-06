@@ -5,6 +5,7 @@ import { quote, type Slot } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
 import { fmt, when, cphDate } from '../core/time';
 import type { ConsentKey } from '../core/types';
+import { MonthPicker } from './picker';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note, type PublicConfig } from './shared';
 import { CONTACT_EMAIL, LINKS, OTHER_LABS_PRICE, JACK, PLAN_INFO, RECOMMENDED, PLAN_ORDER, FLOW, FAQS } from './content';
 
@@ -15,9 +16,6 @@ const LOWEST = Math.min(...PACKS.map(unitFor));
 const BIGGEST = Math.max(...PACKS);
 const SINGLE = unitFor(1);
 const introHref = LINKS.introCall || `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Free 15 min call about NDURE Labs')}`;
-const dayName = (iso: string) => fmt(iso, { weekday: 'short' });
-const dayNum = (iso: string) => fmt(iso, { day: 'numeric' });
-const monthShort = (iso: string) => fmt(iso, { month: 'short' });
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const clock = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
 
@@ -238,9 +236,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   const [cfgErr, setCfgErr] = useState(false);
   const [step, setStep] = useState(PACKS.includes(startQty) ? 2 : 1);
   const [qty, setQty] = useState(PACKS.includes(startQty) ? startQty : RECOMMENDED);
-  const [day, setDay] = useState<string | null>(null);
   const [start, setStart] = useState<string | null>(null);
-  const [later, setLater] = useState(false);
   const [f, setF] = useState({ name: '', email: '', phone: '', ftp: '', goal: 'Racing' });
   const [consents, setConsents] = useState<Partial<Record<ConsentKey, boolean>>>({});
   const [human, setHuman] = useState('');
@@ -258,21 +254,10 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
 
   const q = quote(CFG, qty, false);
   const info = PLAN_INFO[qty];
-  const byDay = useMemo(() => {
-    const m = new Map<string, Slot[]>();
-    for (const s of slots ?? []) {
-      const d = cphDate(Date.parse(s.start));
-      m.set(d, [...(m.get(d) ?? []), s]);
-    }
-    return [...m.entries()];
-  }, [slots]);
-  // Keep the chosen day and time valid when the list of free sessions changes.
+  // Keep the chosen time valid when the list of free sessions changes.
   useEffect(() => {
-    if (!slots) return;
-    if (start && !slots.some((s) => s.start === start)) setStart(null);
-    if (!day || !byDay.some(([d]) => d === day)) setDay(byDay[0]?.[0] ?? null);
-  }, [slots, byDay]);
-  const times = byDay.find(([d]) => d === day)?.[1] ?? [];
+    if (slots && start && !slots.some((s) => s.start === start)) setStart(null);
+  }, [slots]);
 
   const go = (n: number) => {
     setStep(n);
@@ -281,7 +266,6 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   };
   const choose = (n: number) => {
     setQty(n);
-    if (n === 1) setLater(false);
     go(2);
   };
 
@@ -289,14 +273,14 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   async function pay(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (!start && !later) { setNote({ kind: 'err', text: 'Pick a date first.' }); go(2); return; }
+    if (!start) { setNote({ kind: 'err', text: 'Pick a date first.' }); go(2); return; }
     if (missing.length) { setNote({ kind: 'err', text: 'Tick all the required boxes.' }); return; }
     if (cfg?.turnstileSiteKey && !human) { setNote({ kind: 'err', text: 'Wait for the security check to finish, then try again.' }); return; }
     setBusy(true);
     setNote(null);
     try {
       const d = await api<{ url: string }>('/api/checkout', {
-        qty, partner: false, start: later ? null : start, later,
+        qty, partner: false, start,
         name: f.name, email: f.email, phone: f.phone, ftp: f.ftp ? Number(f.ftp) : null, goal: f.goal,
         consents, src: params.get('src') || 'web', turnstile: human
       });
@@ -307,10 +291,11 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
       setTsRound((n) => n + 1);
       setBusy(false);
       if (err.status === 409) {
+        const lost = start;
         setStart(null);
         reloadSlots();
         setStep(2);
-        setNote({ kind: 'err', text: err.message || 'That time was just taken. Pick another one.' });
+        setNote({ kind: 'err', text: lost ? `Sorry, ${clock(lost)} on ${longDay(lost)} was just taken by someone else. Nothing was charged. Pick another time.` : err.message });
       } else setNote({ kind: 'err', text: err.message });
       requestAnimationFrame(() => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
@@ -320,8 +305,8 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
     <aside className="side panel sum" aria-label="Your booking">
       <p style={{ margin: 0, fontWeight: 600, fontSize: 17 }}>Your booking</p>
       <div className="ln"><span>Sessions</span><span>{info.tier}, {qty}</span></div>
-      <div className="ln"><span>{qty > 1 ? 'First session' : 'Session'}</span><span style={{ textAlign: 'right' }}>{later ? 'You pick after paying' : start ? when(start) : 'Not chosen yet'}</span></div>
-      <div className="ln"><span>Where</span><span>NDURE Lab, DTU Lyngby</span></div>
+      <div className="ln"><span>{qty > 1 ? 'First session' : 'Session'}</span><span style={{ textAlign: 'right' }}>{start ? when(start) : 'Not chosen yet'}</span></div>
+      <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>Diplomvej 376<br />2800 Kongens Lyngby</span></div>
       <div className="ln"><span>Per session</span><span>{q.saving > 0 && <s style={{ color: '#999', marginRight: 6 }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
       <div className="ln tot"><span style={{ color: '#000' }}>Total</span><span>{kr(q.total)}</span></div>
       <ul>
@@ -380,42 +365,19 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
             <div className="cols">
               <div className="main panel stack g16">
                 <div className="row spread"><p className="h3" style={{ margin: 0 }}>{qty > 1 ? 'Pick your first session' : 'Pick your session'}</p><span className="muted small">Tue to Fri · book at least 1 week ahead</span></div>
+                {qty > 1 && <p className="muted" style={{ margin: 0 }}>Your other {qty - 1} sessions you book later from your account, whenever it suits you.</p>}
                 {slotError ? (
                   <div className="stack g12"><Msg note={{ kind: 'err', text: slotError }} /><button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={reloadSlots}>Try again</button></div>
                 ) : !slots ? (
                   <p className="muted" aria-live="polite">Loading free sessions…</p>
                 ) : slots.length === 0 ? (
-                  <Msg note={{ kind: 'err', text: `No free sessions in the coming weeks. Email ${CONTACT_EMAIL} and we find a time.` }} />
+                  <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">We're fully booked right now. Email us and we find a time for you, or check back soon: new dates open every week.</p><a className="btn sm" href={`mailto:${CONTACT_EMAIL}`}>Email {CONTACT_EMAIL}</a></div>
                 ) : (
-                  <>
-                    <div className="days" role="group" aria-label="Day">
-                      {byDay.map(([d, list]) => (
-                        <button type="button" key={d} className="day" aria-pressed={day === d && !later} aria-label={longDay(list[0].start)} onClick={() => { setDay(d); setLater(false); }}>
-                          <small>{dayName(list[0].start)}</small><b>{dayNum(list[0].start)}</b><small>{monthShort(list[0].start)}</small>
-                        </button>
-                      ))}
-                    </div>
-                    {!later && day && (
-                      <div className="times" role="group" aria-label="Time">
-                        {times.map((s) => (
-                          <button type="button" key={s.start} className="time" aria-pressed={start === s.start} onClick={() => setStart(s.start)}>
-                            <b>{clock(s.start)} {s.label}</b>
-                            <small>{longDay(s.start)} · {s.free === 1 ? 'last spot' : `${s.free} spots left`}</small>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-                {qty > 1 && (
-                  <button type="button" className="later" aria-pressed={later} onClick={() => { setLater(!later); setStart(null); }}>
-                    <span style={{ fontSize: 18, lineHeight: 1 }} aria-hidden="true">{later ? '✓' : '○'}</span>
-                    <span><b>Choose dates later</b><br /><span className="muted small">Pay now and book every session from your account.</span></span>
-                  </button>
+                  <MonthPicker slots={slots} value={start} onChange={setStart} />
                 )}
                 <div className="row">
-                  <button type="button" className="btn ghost sm" onClick={() => go(1)}>Change sessions</button>
-                  <button type="button" className="btn sm" disabled={!start && !later} onClick={() => go(3)}>Next: your details</button>
+                  <button type="button" className="btn ghost sm" onClick={() => go(1)}>‹ Back</button>
+                  <button type="button" className="btn sm" disabled={!start} onClick={() => go(3)}>Next: your details</button>
                 </div>
               </div>
               {summary}
@@ -455,7 +417,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
                 )}
                 <Turnstile key={tsRound} siteKey={cfg?.turnstileSiteKey ?? null} onToken={setHuman} />
                 <div className="row">
-                  <button type="button" className="btn ghost sm" onClick={() => go(2)}>Change date</button>
+                  <button type="button" className="btn ghost sm" onClick={() => go(2)}>‹ Back</button>
                   <button type="submit" className="btn" disabled={busy || !cfg}>{busy ? 'Opening payment…' : `Pay ${kr(q.total)}`}</button>
                 </div>
                 <p className="muted small" style={{ margin: 0 }}>Secure payment by Stripe: card, Apple Pay or Google Pay. If you picked a time, we hold it for you while you pay.</p>

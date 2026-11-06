@@ -291,7 +291,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
 
     if (m === 'GET' && p === '/api/me') {
       const pending = s.db.orders.find((o) => o.customerId === cid && o.id === url.searchParams.get('paid'));
-      return json({ ...engine(s).account(cid), pendingOrder: pending ? { status: pending.status, firstStatus: pending.firstStatus, firstStart: pending.firstStart } : null }, 200, cookies);
+      return json({ ...(await accountView(s, cid, appUrl)), pendingOrder: pending ? { status: pending.status, firstStatus: pending.firstStatus, firstStart: pending.firstStart } : null }, 200, cookies);
     }
     if (m === 'GET' && p === '/api/me/slots') {
       const e = engine(s);
@@ -309,6 +309,20 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         engine(st).audit(`rider:${me.email}`, 'logout everywhere', '');
       });
       return json({ ok: true }, 200, [cookie('sid', '', 0), cookie('co', '', 0)]);
+    }
+    if (m === 'POST' && p === '/api/me/topup') {
+      if (!(await allowed(env.RL_CHECKOUT, `checkout:${ip}`))) return fail('Too many attempts from your connection. Wait a minute and try again.', 429);
+      const b = await body(req);
+      const order = await change(env, (st) => engine(st).topUp(cid, Number(b.qty)));
+      try {
+        const checkoutUrl = await createCheckout(env, config, order, me.email, appUrl, '/account?cancelled=1');
+        await change(env, (st) => engine(st).audit(`rider:${me.email}`, 'add sessions, to payment', `${order.qty}, ${engine(st).money(order.total)}`));
+        return json({ url: checkoutUrl }, 200, cookies);
+      } catch (e) {
+        console.error(e);
+        await change(env, (st) => engine(st).checkoutExpired(order.id));
+        return fail('Payment could not be started. Please try again.', 502);
+      }
     }
     if (m === 'POST') {
       const b = await body(req);
@@ -337,7 +351,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         throw new LabsError('Unknown action.', 'action');
       });
       sendSoon(env, ctx);
-      return json(engine(await read(env)).account(cid), 200, cookies);
+      return json(await accountView(await read(env), cid, appUrl), 200, cookies);
     }
   }
 
@@ -631,3 +645,10 @@ export default {
     }
   }
 } satisfies ExportedHandler<Env>;
+
+// The rider's account, with a private calendar file link per upcoming session.
+async function accountView(s: Awaited<ReturnType<typeof read>>, cid: string, appUrl: string) {
+  const a = engine(s).account(cid);
+  const upcoming = await Promise.all(a.upcoming.map(async (b) => ({ ...b, icsUrl: `${appUrl}/calendar/session/${b.id}/${await sessionToken(s.secrets.feed, b.id)}.ics` })));
+  return { ...a, upcoming };
+}

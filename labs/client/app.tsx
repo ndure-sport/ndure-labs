@@ -4,14 +4,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Slot } from '../core/engine';
-import { fmt, when, cphDate } from '../core/time';
+import { fmt, when, cphDate, cphOffset } from '../core/time';
 import type { ConsentKey, Booking, Customer, Order } from '../core/types';
-import { api, ApiError, getConfig, Msg, Turnstile, Header, Footer, type Note } from './shared';
+import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
+import { MonthPicker } from './picker';
 import { Landing } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
-import { FollowUp, Contacts, Sales, type CrmData } from './crm';
 import { Opening, type OpeningData } from './opening';
-import { Emails, type EmailsData } from './emails';
 
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const time = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
@@ -138,25 +137,90 @@ function AfterPayment({ orderId, onLoggedIn }: { orderId: string; onLoggedIn: ()
 }
 
 // ---------------- rider account ----------------
+type Upcoming = Booking & { changeable: boolean; icsUrl: string };
+type TopUp = { parentId: string; has: number; max: number; expiresAt: string; options: { n: number; price: number; unit: number }[] } | null;
 type AccountData = {
   customer: Customer;
   balance: { total: number; orders: Order[] };
-  upcoming: (Booking & { changeable: boolean })[];
+  upcoming: Upcoming[];
   past: Booking[];
   nextDue: string | null;
+  topUp: TopUp;
   pendingOrder: { status: string; firstStatus: string; firstStart: string | null } | null;
 };
 
+const PLACE = 'Diplomvej 376, 2800 Kongens Lyngby';
+const MAPS = 'https://maps.google.com/?q=Diplomvej+376,+2800+Kongens+Lyngby';
+const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+function CalendarLinks({ b }: { b: Upcoming }) {
+  const title = encodeURIComponent('NDURE Labs lactate session');
+  const loc = encodeURIComponent(PLACE);
+  const details = encodeURIComponent('Bring cycling shoes, pedals, kit and a bottle.');
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${stamp(b.start)}/${stamp(b.end)}&location=${loc}&details=${details}`;
+  const outlook = `https://outlook.office.com/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${title}&startdt=${encodeURIComponent(new Date(b.start).toISOString())}&enddt=${encodeURIComponent(new Date(b.end).toISOString())}&location=${loc}&body=${details}`;
+  return (
+    <p className="cal-links">Add to calendar: <a href={outlook} target="_blank" rel="noopener noreferrer">Outlook</a><a href={google} target="_blank" rel="noopener noreferrer">Google</a><a href={b.icsUrl}>Apple / other</a></p>
+  );
+}
+
+function SessionCard({ b, busy, onMove, onCancel, confirming, onConfirm, onKeep }: { b: Upcoming; busy: boolean; onMove: () => void; onCancel: () => void; confirming: boolean; onConfirm: () => void; onKeep: () => void }) {
+  return (
+    <div className="scard">
+      <div className="scard-top">
+        <div>
+          <p className="scard-day">{longDay(b.start)}</p>
+          <p className="muted" style={{ margin: 0 }}>{time(b.start)} to {time(b.end)}, {b.label.toLowerCase()} session{b.withPartner ? `, with ${b.partnerName}` : ''}</p>
+        </div>
+        {b.changeable && !confirming && (
+          <span className="row"><button onClick={onMove}>Change date</button><button onClick={onCancel}>Cancel</button></span>
+        )}
+      </div>
+      {confirming && (
+        <div className="msg err row spread"><span>Cancel this session? It goes back on your account.</span>
+          <span className="row"><button disabled={busy} onClick={onConfirm}>Yes, cancel</button><button onClick={onKeep}>Keep it</button></span>
+        </div>
+      )}
+      <dl className="sinfo">
+        <dt>Where</dt><dd><a href={MAPS} target="_blank" rel="noopener noreferrer">{PLACE}</a><br /><span className="muted small">DTU campus</span></dd>
+        <dt>Bring</dt><dd>Cycling shoes and pedals, kit, a bottle</dd>
+        <dt>Prep</dt><dd>An easy day before, a normal meal 2 to 3 hours before, no caffeine in the last 2 hours</dd>
+      </dl>
+      <CalendarLinks b={b} />
+      <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
+    </div>
+  );
+}
+
+function AddSessions({ t, busy, onBuy }: { t: NonNullable<TopUp>; busy: boolean; onBuy: (n: number) => void }) {
+  const [n, setN] = useState(1);
+  const opt = t.options.find((o) => o.n === n) ?? t.options[0];
+  return (
+    <div className="stack g12">
+      <h3 style={{ margin: 0 }}>Add sessions</h3>
+      <p className="small muted" style={{ margin: 0 }}>You pay the same as if you had bought {t.has + n} sessions in one go. Extra sessions are valid until {fmt(t.expiresAt, { day: 'numeric', month: 'short', year: 'numeric' })}.</p>
+      <div className="row spread" style={{ alignItems: 'center' }}>
+        <span className="stepper">
+          <button className="stp" aria-label="One less" disabled={n <= 1} onClick={() => setN(n - 1)}>−</button>
+          <b aria-live="polite">{n}</b>
+          <button className="stp" aria-label="One more" disabled={n >= t.max} onClick={() => setN(n + 1)}>+</button>
+        </span>
+        <span style={{ textAlign: 'right' }}><b style={{ fontSize: 20 }}>{kr(opt.price)}</b><br /><span className="small muted">{kr(opt.unit)} per session</span></span>
+      </div>
+      <button className="btn full" disabled={busy} onClick={() => onBuy(n)}>{busy ? 'Opening payment…' : `Add ${n} ${n === 1 ? 'session' : 'sessions'}, pay ${kr(opt.price)}`}</button>
+    </div>
+  );
+}
+
 function Account() {
-  const [paidId, setPaidId] = useState(() => new URLSearchParams(location.search).get('paid'));
+  const params = new URLSearchParams(location.search);
+  const [paidId, setPaidId] = useState(() => params.get('paid'));
   // After logging out, start clean: not the "back from Stripe" view.
   const loggedOut = () => { setPaidId(null); history.replaceState(null, '', '/account'); setA(null); setNeedLogin(true); };
   const [a, setA] = useState<AccountData | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
-  const [note, setNote] = useState<Note>(null);
+  const [note, setNote] = useState<Note>(params.get('cancelled') ? { kind: 'err', text: 'Payment was cancelled. Nothing was charged.' } : null);
   const [mode, setMode] = useState<{ type: 'book' } | { type: 'move'; id: string } | null>(null);
   const [slots, setSlots] = useState<Slot[] | null>(null);
-  const [need, setNeed] = useState(1);
   const [pick, setPick] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -185,8 +249,9 @@ function Account() {
     setSlots(null);
     setPick(null);
     api<{ slots: Slot[]; need: number }>(`/api/me/slots${mode.type === 'move' ? `?booking=${mode.id}` : ''}`)
-      .then((d) => { setSlots(d.slots); setNeed(d.need); })
+      .then((d) => setSlots(d.slots))
       .catch((e) => setNote({ kind: 'err', text: e.message }));
+    requestAnimationFrame(() => document.getElementById('picker')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [mode]);
 
   async function act(path: string, payload: object, ok: string) {
@@ -203,6 +268,17 @@ function Account() {
     }
     setBusy(false);
   }
+  async function buy(n: number) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const d = await api<{ url: string }>('/api/me/topup', { qty: n });
+      location.assign(d.url);
+    } catch (e) {
+      setNote({ kind: 'err', text: (e as Error).message });
+      setBusy(false);
+    }
+  }
 
   if (needLogin) return <Shell>{paidId ? <AfterPayment orderId={paidId} onLoggedIn={load} /> : <Login team={false} onDone={load} />}</Shell>;
   if (!a) return <Shell><NoteBox note={note} />{!note && <p className="muted">Loading…</p>}</Shell>;
@@ -216,6 +292,7 @@ function Account() {
       </Shell>
     );
   }
+  const moving = mode?.type === 'move' ? a.upcoming.find((b) => b.id === mode.id) : null;
 
   return (
     <Shell>
@@ -223,7 +300,7 @@ function Account() {
       {a.pendingOrder?.firstStatus === 'failed' && (
         <div className="msg err">The session you picked filled up while you were paying. Your session is safe in your account: choose another time below.</div>
       )}
-      <div className="grid">
+      <div className="grid acct">
         <section className="card">
           <div className="row spread">
             <h1>Hi {a.customer.name.split(' ')[0]}</h1>
@@ -236,41 +313,24 @@ function Account() {
           <h3>Upcoming</h3>
           {a.upcoming.length === 0 && <p className="muted">Nothing booked.</p>}
           {a.upcoming.map((b) => (
-            <div key={b.id} className="item">
-              <span><b>{when(b.start)}</b> {b.label}{b.withPartner ? `, with ${b.partnerName}` : ''}</span>
-              {b.changeable ? (
-                confirmCancel === b.id ? (
-                  <span className="row">Cancel this session?
-                    <button disabled={busy} onClick={() => act('/api/me/cancel', { bookingId: b.id }, 'Cancelled. The session is back in your account.')}>Yes, cancel</button>
-                    <button onClick={() => setConfirmCancel(null)}>Keep it</button>
-                  </span>
-                ) : (
-                  <span className="row">
-                    <button onClick={() => setMode({ type: 'move', id: b.id })}>Change date</button>
-                    <button onClick={() => setConfirmCancel(b.id)}>Cancel</button>
-                  </span>
-                )
-              ) : (
-                <span className="muted small">Less than 24 h to go: email contact@ndure.dk</span>
-              )}
-            </div>
+            <SessionCard key={b.id} b={b} busy={busy} confirming={confirmCancel === b.id}
+              onMove={() => setMode({ type: 'move', id: b.id })} onCancel={() => setConfirmCancel(b.id)} onKeep={() => setConfirmCancel(null)}
+              onConfirm={() => act('/api/me/cancel', { bookingId: b.id }, 'Cancelled. The session is back in your account.')} />
           ))}
 
-          {mode ? (
-            <div className="box">
-              <h3>{mode.type === 'book' ? 'Book a session' : 'Pick a new time'}</h3>
-              <SlotPicker slots={slots} value={pick} onChange={setPick} need={need} />
+          {mode && (
+            <div className="scard" id="picker" style={{ scrollMarginTop: 96 }}>
+              <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Fri · at least 1 week ahead</span></div>
+              {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? (
+                <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">Email contact@ndure.dk and we find a time for you.</p></div>
+              ) : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
               <div className="row">
-                <button className="primary" disabled={!pick || busy} onClick={() => mode.type === 'book' ? act('/api/me/book', { start: pick }, 'Booked. A confirmation is on its way.') : act('/api/me/reschedule', { bookingId: mode.id, start: pick }, 'Moved. A confirmation is on its way.')}>
-                  {busy ? 'Saving…' : 'Confirm'}
+                <button className="btn" disabled={!pick || busy} onClick={() => mode.type === 'book' ? act('/api/me/book', { start: pick }, 'Booked. A confirmation is on its way.') : act('/api/me/reschedule', { bookingId: mode.id, start: pick }, 'Moved. A confirmation is on its way.')}>
+                  {busy ? 'Saving…' : pick ? `${mode.type === 'book' ? 'Book' : 'Move to'} ${longDay(pick)}, ${time(pick)}` : 'Pick a time'}
                 </button>
-                <button onClick={() => setMode(null)}>Close</button>
+                <button onClick={() => setMode(null)}>Cancel</button>
               </div>
-            </div>
-          ) : (
-            <div className="row">
-              {a.balance.total > 0 && <button className="primary" onClick={() => setMode({ type: 'book' })}>Book a session</button>}
-              <a className="button" href="/#book">Buy more sessions</a>
+              <p className="muted small" style={{ margin: 0 }}>{mode.type === 'book' ? 'Uses 1 of your sessions. ' : ''}Free to move until 24 hours before.</p>
             </div>
           )}
 
@@ -279,14 +339,169 @@ function Account() {
           {a.past.map((b) => <div key={b.id} className="item"><span>{when(b.start)} {b.label}</span><span className="muted">{b.status === 'no_show' ? 'No show' : 'Done'}</span></div>)}
         </section>
 
-        <aside className="card">
-          <h3>Sessions left</h3>
-          <p className="bignum">{a.balance.total}</p>
-          {a.balance.orders.map((o) => <p key={o.id} className="small muted">{o.remaining} of {o.qty}{o.free ? ' (free)' : ''}, valid until {fmt(o.expiresAt!, { day: 'numeric', month: 'short', year: 'numeric' })}</p>)}
-          {a.nextDue && (Date.parse(a.nextDue) <= Date.now() ? <p className="small"><b>Your next test is due now.</b></p> : <p className="small">Next test due around <b>{fmt(a.nextDue, { day: 'numeric', month: 'long' })}</b></p>)}
+        <aside className="card stack g16">
+          <div className="stack g8">
+            <h3 style={{ margin: 0 }}>Sessions left</h3>
+            <p className="bignum">{a.balance.total}</p>
+            {a.balance.orders.map((o) => <p key={o.id} className="small muted" style={{ margin: 0 }}>{o.remaining} of {o.qty}{o.free ? ' (free)' : o.parentId ? ' (added)' : ''}, valid until {fmt(o.expiresAt!, { day: 'numeric', month: 'short', year: 'numeric' })}</p>)}
+            {a.nextDue && (Date.parse(a.nextDue) <= Date.now() ? <p className="small" style={{ margin: 0 }}><b>Your next test is due now.</b></p> : <p className="small" style={{ margin: 0 }}>Next test due around <b>{fmt(a.nextDue, { day: 'numeric', month: 'long' })}</b></p>)}
+          </div>
+          {a.balance.total > 0 ? (
+            <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>
+          ) : (
+            <a className="btn full" href="/#book">Buy sessions</a>
+          )}
+          {a.topUp && <><hr className="sep" /><AddSessions t={a.topUp} busy={busy} onBuy={buy} /></>}
         </aside>
       </div>
     </Shell>
+  );
+}
+
+// ---------------- team: sessions ----------------
+type Act = (payload: object, ok: string) => Promise<boolean>;
+const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function TimeChip({ iso, label, dim = false }: { iso: string; label: string; dim?: boolean }) {
+  return <span className={`tchip ${label === 'Morning' ? 'am' : 'pm'}${dim ? ' dim' : ''}`}><b>{time(iso)}</b><small>{label}</small></span>;
+}
+
+function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () => void }) {
+  const [cancel, setCancel] = useState<string | null>(null);
+  const [move, setMove] = useState<TeamRow | null>(null);
+  const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [bookAt, setBookAt] = useState<string | null>(null);
+  const [rider, setRider] = useState('');
+  useEffect(() => {
+    if (!move) return;
+    setSlots(null);
+    setPick(null);
+    api<{ slots: Slot[] }>(`/api/team/slots?booking=${move.id}`).then((d) => setSlots(d.slots));
+  }, [move]);
+  const run = async (payload: object, ok: string) => { if (await act(payload, ok)) { setCancel(null); setMove(null); setBookAt(null); setRider(''); } };
+  const now = Date.now();
+  const today = cphDate(now);
+  const upcoming = t.days.flatMap((d) => d.list).filter((r) => Date.parse(r.start) > now).length;
+  const withCredit = t.riders.filter((r) => r.balance > 0);
+
+  // Each day: per session time, the booked riders and then the free spots.
+  const dayRows = (date: string, list: TeamRow[]) => {
+    const [y, m, d] = date.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const open = t.opening.blocks.filter((b) => (t.opening.hours[dow] ?? []).includes(b.id) || list.some((r) => r.blockId === b.id));
+    return open.flatMap((b) => {
+      const at = `${date}T${b.time}:00${cphOffset(y, m - 1, d)}`;
+      const here = list.filter((r) => r.blockId === b.id);
+      const used = here.reduce((n, r) => n + r.seats, 0);
+      return [...here.map((r) => ({ kind: 'rider' as const, r, at, label: b.label })), ...Array.from({ length: Math.max(0, b.capacity - used) }, (_, i) => ({ kind: 'free' as const, key: `${at}-${i}`, at, label: b.label }))];
+    });
+  };
+  const capacityOf = (date: string, list: TeamRow[]) => {
+    const [y, m, d] = date.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    return t.opening.blocks.filter((b) => (t.opening.hours[dow] ?? []).includes(b.id) || list.some((r) => r.blockId === b.id)).reduce((n, b) => n + b.capacity, 0);
+  };
+
+  return (
+    <section className="card" style={{ gap: 18 }}>
+      <div className="row spread">
+        <div className="stack g4"><h1>Upcoming sessions</h1><span className="muted"><b style={{ color: '#000' }}>{upcoming} {upcoming === 1 ? 'rider' : 'riders'}</b> booked</span></div>
+        <span className="row muted small">Logged in as {t.me}
+          <button className="ghost" onClick={() => api('/api/logout', {}).then(onLogout)}>Log out</button>
+          <button className="ghost" onClick={() => api('/api/team/logout-all', {}).then(onLogout)}>Log out on all devices</button>
+        </span>
+      </div>
+      <div className="skey"><span className="tchip am"><b>09:30</b><small>Morning</small></span><span className="tchip pm"><b>13:00</b><small>Afternoon</small></span><span className="pill ok">Health ok</span><span className="pill bad">Consent missing</span><span>On the day: mark who came. Before the day: move or cancel.</span></div>
+      {t.days.length === 0 && <p className="muted">Nothing booked yet.</p>}
+      {t.days.length > 0 && <div className="srow shead"><span>Session</span><span>Rider</span><span>Contact</span><span>Status</span><span style={{ textAlign: 'right' }}>Actions</span></div>}
+      {t.days.map(({ date, list }) => {
+        const isToday = date === today;
+        const rows = dayRows(date, list);
+        const taken = rows.filter((x) => x.kind === 'rider').reduce((n, x) => n + (x.kind === 'rider' ? x.r.seats : 0), 0);
+        const cap = capacityOf(date, list);
+        const [y, m, d] = date.split('-').map(Number);
+        return (
+          <div key={date} className={`sday${isToday ? ' today' : ''}`}>
+            <div className="sday-head">
+              <span className="row" style={{ gap: 10 }}><span className="stag">{isToday ? 'Today' : date < today ? 'Past' : SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}</span><b>{longDay(`${date}T12:00:00Z`)}</b></span>
+              <span className="row small" style={{ gap: 10 }}>{taken} of {cap} spots taken<span className="sbar"><i style={{ width: `${cap ? Math.round((taken / cap) * 100) : 0}%` }} /></span></span>
+            </div>
+            {rows.map((x) => {
+              if (x.kind === 'free') {
+                const past = Date.parse(x.at) <= now;
+                return (
+                  <div key={x.key} className="srow free">
+                    <TimeChip iso={x.at} label={x.label} dim />
+                    {bookAt === x.key ? (
+                      <span className="srow-wide row">
+                        <select value={rider} onChange={(e) => setRider(e.target.value)} aria-label="Rider">
+                          <option value="">Pick a rider with sessions left</option>
+                          {withCredit.map((c) => <option key={c.id} value={c.id}>{c.name}, {c.email} ({c.balance} left)</option>)}
+                        </select>
+                        <button className="primary" disabled={!rider} onClick={() => run({ action: 'book', customerId: rider, start: x.at }, 'Booked. The rider got a confirmation.')}>Book</button>
+                        <button onClick={() => setBookAt(null)}>Close</button>
+                        {withCredit.length === 0 && <span className="small muted">Nobody has sessions left. Give sessions on the Admin tab first.</span>}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="muted srow-mid">Free spot</span>
+                        <span className="sacts">{!past && <button className="sbtn" onClick={() => { setBookAt(x.key); setRider(''); }}>+ Book a rider</button>}</span>
+                      </>
+                    )}
+                  </div>
+                );
+              }
+              const r = x.r;
+              const started = Date.parse(r.start) <= now;
+              const cs = r.customer.consents?.items;
+              const partnerOk = !r.withPartner || !!r.order.partnerConsents?.items.health;
+              return (
+                <div key={r.id} className="srow">
+                  <TimeChip iso={r.start} label={r.label} />
+                  <span className="scell"><b>{r.customer.name}</b>{r.withPartner && <span className="small">+ {r.partnerName}</span>}<span className="small muted">{r.customer.ftp ? `${r.customer.ftp} W` : 'No FTP'} · {r.customer.goal ?? 'No goal given'}</span></span>
+                  <span className="scell small">{r.customer.phone ? <a href={`tel:${r.customer.phone.replace(/\s/g, '')}`}>{r.customer.phone}</a> : <span className="muted">No phone</span>}<a className="muted ell" href={`mailto:${r.customer.email}`}>{r.customer.email}</a></span>
+                  <span className="pills">
+                    {r.status === 'attended' && <span className="pill ok">Came</span>}
+                    {r.status === 'no_show' && <span className="pill bad">No show</span>}
+                    {cs?.health && partnerOk ? <span className="pill ok">Health ok</span> : <span className="pill bad">Consent missing</span>}
+                    {cs?.film && <span className="pill fine">Film ok</span>}
+                  </span>
+                  <span className="sacts">
+                    {started && r.status === 'booked' && (<>
+                      <button className="sbtn go" onClick={() => run({ action: 'attended', bookingId: r.id }, `${r.customer.name}: came.`)}>✓ Came</button>
+                      <button className="sbtn red" onClick={() => run({ action: 'no_show', bookingId: r.id }, `${r.customer.name}: no show. The session stays used.`)}>✕ No show</button>
+                    </>)}
+                    {started && r.status !== 'booked' && (
+                      <button className="sbtn" onClick={() => run({ action: r.status === 'attended' ? 'no_show' : 'attended', bookingId: r.id }, 'Changed.')}>{r.status === 'attended' ? 'Change to no show' : 'Change to came'}</button>
+                    )}
+                    {!started && r.status === 'booked' && (cancel === r.id ? (<>
+                      <button className="sbtn red" onClick={() => run({ action: 'cancel', bookingId: r.id, returnCredit: true }, 'Cancelled, session given back. The rider got an email.')}>Cancel, give session back</button>
+                      <button className="sbtn red" onClick={() => run({ action: 'cancel', bookingId: r.id, returnCredit: false }, 'Cancelled, session counted as used. The rider got an email.')}>Cancel, session used</button>
+                      <button className="sbtn" onClick={() => setCancel(null)}>Keep</button>
+                    </>) : (<>
+                      <button className="sbtn line" onClick={() => setMove(r)}>↔ Move date</button>
+                      <button className="sbtn red" onClick={() => setCancel(r.id)}>Cancel booking</button>
+                    </>))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      <p className="small muted" style={{ margin: 0 }}>Move date: pick a new time, the rider gets an email and a calendar update. Cancel booking: you choose if the session goes back on their account. Came and No show appear once the session has started.</p>
+      {move && (
+        <div className="scard">
+          <h3 style={{ margin: 0 }}>Move {move.customer.name} from {when(move.start)}</h3>
+          {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? <p className="muted">No free sessions in the coming weeks.</p> : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
+          <div className="row">
+            <button className="primary" disabled={!pick} onClick={() => run({ action: 'move', bookingId: move.id, start: pick }, 'Moved. The rider got an email.')}>{pick ? `Move to ${when(pick)}` : 'Pick a time'}</button>
+            <button onClick={() => setMove(null)}>Close</button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -302,22 +517,17 @@ type TeamData = {
   status: { bytes: number; limit: number; lastJob: string | null; emailsWaiting: number; emailsToday: number; riders: number; openCheckouts: number };
   alerts: { at: string; kind: string; text: string }[];
   audit: { at: string; by: string; action: string; detail: string }[];
-  crm: CrmData;
   opening: OpeningData;
-  emails: EmailsData;
+  emails: { paused: { at: string; count: number } | null };
 };
 
 function Team() {
   const [t, setT] = useState<TeamData | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
   const [note, setNote] = useState<Note>(null);
-  const [late, setLate] = useState<string | null>(null);
-  const [move, setMove] = useState<TeamRow | null>(null);
-  const [slots, setSlots] = useState<Slot[] | null>(null);
-  const [pick, setPick] = useState<string | null>(null);
   const [give, setGive] = useState({ email: '', name: '', qty: 1 });
-  type Tab = 'sessions' | 'opening' | 'follow' | 'contacts' | 'sales' | 'emails' | 'admin';
-  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'opening', 'follow', 'contacts', 'sales', 'emails', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
+  type Tab = 'sessions' | 'opening' | 'admin';
+  const [tab, setTabState] = useState<Tab>(() => (['sessions', 'opening', 'admin'].includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'sessions'));
   const setTab = (x: Tab) => { setTabState(x); setNote(null); history.replaceState(null, '', `/team#${x}`); };
 
   const load = useCallback(async () => {
@@ -330,20 +540,12 @@ function Team() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    if (!move) return;
-    setSlots(null);
-    setPick(null);
-    api<{ slots: Slot[] }>(`/api/team/slots?booking=${move.id}`).then((d) => setSlots(d.slots));
-  }, [move]);
 
   const act = async (payload: object, ok: string): Promise<boolean> => {
     setNote(null);
     try {
       setT(await api<TeamData>('/api/team/action', payload));
       setNote({ kind: 'ok', text: ok });
-      setLate(null);
-      setMove(null);
       return true;
     } catch (e) {
       setNote({ kind: 'err', text: (e as Error).message });
@@ -362,88 +564,22 @@ function Team() {
       {t.emailErrors.length > 0 && (
         <div className="msg err">Some emails could not be sent{t.emailErrors.some((e) => !e.gaveUp) ? ' (retrying automatically)' : ''}: {t.emailErrors.map((e) => `${e.subject} to ${e.to}${e.gaveUp ? ' (gave up)' : ''}`).join('; ')}. Check the Brevo key, sender and daily limit.</div>
       )}
-      <nav className="tabs" aria-label="Team">
-        {([['sessions', 'Sessions'], ['opening', 'Opening hours'], ['follow', 'Follow up'], ['contacts', 'Contacts'], ['sales', 'Sales'], ['emails', 'Emails'], ['admin', 'Admin']] as const).map(([k, l]) => {
-          const n = k === 'emails' ? (t.emails.paused ? 1 : 0) + t.emails.log.filter((x) => x.status === 'failed').length : k === 'follow' ? t.crm.riders.filter((r) => r.followUpDue || r.status === 'due' || r.status === 'never_came').length : k === 'contacts' ? t.crm.leads.filter((l) => l.followUpDue).length : 0;
-          return <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}{n > 0 && <span className="badge">{n}</span>}</button>;
-        })}
-      </nav>
-      {tab === 'sessions' && (
-        <>
-      <section className="card">
-        <div className="row spread">
-          <h1>Upcoming sessions</h1>
-          <span className="row muted small">Logged in as {t.me}
-            <button className="ghost" onClick={() => api('/api/logout', {}).then(() => { setT(null); setNeedLogin(true); })}>Log out</button>
-            <button className="ghost" onClick={() => api('/api/team/logout-all', {}).then(() => { setT(null); setNeedLogin(true); })}>Log out on all devices</button>
+      {t.emails?.paused && (
+        <div className="msg err stack g8">
+          <span><b>All automatic emails are paused.</b> On {when(t.emails.paused.at)}, {t.emails.paused.count} automatic emails were about to go out at once, which is far more than normal. Nothing was sent. Booking emails (payments, confirmations, login codes) kept working.</span>
+          <span className="row">
+            <button className="primary" onClick={() => act({ action: 'emails_resume', send: false }, 'Resumed. The held emails are dropped.')}>Drop the held emails and resume</button>
+            <button onClick={() => act({ action: 'emails_resume', send: true }, 'Resumed. The held emails go out in the next minutes.')}>Send them anyway</button>
           </span>
         </div>
-        {t.days.length === 0 && <p className="muted">Nothing booked yet.</p>}
-        {t.days.map(({ date, list }) => (
-          <div key={date}>
-            <h3>{longDay(list[0].start)} <span className="muted small">{list.reduce((n, r) => n + r.seats, 0)} riders</span></h3>
-            <div className="scroll">
-              <table className="team">
-                <thead><tr><th>Time</th><th>Rider</th><th>Contact</th><th>FTP, goal</th><th>Consent</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                  {list.map((r) => {
-                    const started = Date.parse(r.start) <= now;
-                    const cs = r.customer.consents?.items;
-                    return (
-                      <tr key={r.id}>
-                        <td>{time(r.start)}<br /><span className="muted">{r.label}</span></td>
-                        <td><b>{r.customer.name}</b>{r.withPartner && <><br />+ {r.partnerName}</>}</td>
-                        <td>{r.customer.email}<br />{r.customer.phone}</td>
-                        <td>{r.customer.ftp ? `${r.customer.ftp} W` : 'n/a'}<br /><span className="muted">{r.customer.goal}</span></td>
-                        <td>{cs?.health ? 'Health ok' : <b>Missing</b>}{cs?.film ? ', film ok' : ''}{cs?.research ? ', R&D ok' : ''}{r.withPartner && <><br />Partner: {r.order.partnerConsents?.items.health ? 'ok' : <b>missing</b>}</>}</td>
-                        <td>{{ booked: 'Booked', attended: 'Attended', no_show: 'No show', cancelled: 'Cancelled' }[r.status]}</td>
-                        <td className="actions">
-                          {started && r.status === 'booked' && (
-                            <>
-                              <button onClick={() => act({ action: 'attended', bookingId: r.id }, 'Marked as attended.')}>Attended</button>
-                              <button onClick={() => act({ action: 'no_show', bookingId: r.id }, 'Marked as no show. The session stays used.')}>No show</button>
-                            </>
-                          )}
-                          {!started && r.status === 'booked' && (late === r.id ? (
-                            <>
-                              <button onClick={() => act({ action: 'cancel', bookingId: r.id, returnCredit: true }, 'Cancelled, session given back.')}>Cancel, give session back</button>
-                              <button onClick={() => act({ action: 'cancel', bookingId: r.id, returnCredit: false }, 'Cancelled, session counted as used.')}>Cancel, session used</button>
-                              <button onClick={() => setLate(null)}>Keep</button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => setMove(r)}>Move</button>
-                              <button onClick={() => setLate(r.id)}>Cancel</button>
-                            </>
-                          ))}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-        {move && (
-          <div className="box">
-            <h3>Move {move.customer.name} from {when(move.start)}</h3>
-            <SlotPicker slots={slots} value={pick} onChange={setPick} need={move.seats} />
-            <div className="row">
-              <button className="primary" disabled={!pick} onClick={() => act({ action: 'move', bookingId: move.id, start: pick }, 'Moved. The rider got an email.')}>Move</button>
-              <button onClick={() => setMove(null)}>Close</button>
-            </div>
-          </div>
-        )}
-      </section>
-
-        </>
       )}
+      <nav className="tabs" aria-label="Team">
+        {([['sessions', 'Sessions'], ['opening', 'Opening hours'], ['admin', 'Admin']] as const).map(([k, l]) => (
+          <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </nav>
+      {tab === 'sessions' && <Sessions t={t} act={act} onLogout={() => { setT(null); setNeedLogin(true); }} />}
       {tab === 'opening' && <Opening o={t.opening} act={act} />}
-      {tab === 'follow' && <FollowUp crm={t.crm} act={act} />}
-      {tab === 'contacts' && <Contacts crm={t.crm} act={act} />}
-      {tab === 'sales' && <Sales crm={t.crm} />}
-      {tab === 'emails' && <Emails d={t.emails} act={act} />}
       {tab === 'admin' && (
         <>
       <section className="card">
