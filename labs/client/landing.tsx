@@ -404,13 +404,21 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   return (
     <section className="band tight bookpage" aria-labelledby="book-t">
       <div className="stack g24">
-        <h1 id="book-t" className="h2">{step === 1 ? 'Choose your sessions.' : step === 2 ? 'Pick a date.' : 'Your details.'}</h1>
+        <h1 id="book-t" className="sr">{step === 1 ? 'Choose your sessions' : step === 2 ? 'Pick a date' : 'Your details'}</h1>
         <div className="book">
           <div className="steps">
             <ol aria-label="Booking steps">
-              {['Sessions', 'Date', 'Details and payment'].map((s, i) => (
-                <li key={s} className={step === i + 1 ? 'on' : step > i + 1 ? 'done' : ''} aria-current={step === i + 1 ? 'step' : undefined}><span>{step > i + 1 ? '✓' : i + 1}</span>{s}</li>
-              ))}
+              {['Sessions', 'Date', 'Details and payment'].map((s, i) => {
+                const n = i + 1;
+                // Every step you have reached, or can reach, is a link: details only once a time is picked.
+                const can = n !== step && (n < step || (n === 2) || (n === 3 && !!start));
+                const inner = <><span>{step > n ? '✓' : n}</span>{s}</>;
+                return (
+                  <li key={s} className={step === n ? 'on' : step > n ? 'done' : ''} aria-current={step === n ? 'step' : undefined}>
+                    {can ? <button type="button" className="stepbtn" onClick={() => go(n)}>{inner}</button> : inner}
+                  </li>
+                );
+              })}
             </ol>
             <a href="/account" style={{ fontSize: 14 }}>Already have sessions? Log in</a>
           </div>
@@ -422,7 +430,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
             <div className="cols">
               <div className="main panel stack g16">
                 <div className="row spread"><p className="h3" style={{ margin: 0 }}>{qty > 1 ? 'Pick your first session' : 'Pick your session'}</p><span className="muted small">Tue to Fri · book at least 1 week ahead</span></div>
-                {qty > 1 && <p className="muted" style={{ margin: 0 }}>Your other {qty - 1} sessions you book later from your account, whenever it suits you.</p>}
+                {qty > 1 && <p className="muted small" style={{ margin: 0 }}>Your other {qty - 1} sessions you book later from your account, whenever it suits you.</p>}
                 {slotError ? (
                   <div className="stack g12"><Msg note={{ kind: 'err', text: slotError }} /><button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={reloadSlots}>Try again</button></div>
                 ) : !slots ? (
@@ -430,7 +438,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
                 ) : slots.length === 0 ? (
                   <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">We're fully booked right now. Email us and we find a time for you, or check back soon: new dates open every week.</p><a className="btn sm" href={`mailto:${CONTACT_EMAIL}`}>Email {CONTACT_EMAIL}</a></div>
                 ) : (
-                  <MonthPicker slots={slots} value={start} onChange={setStart} />
+                  <MonthPicker slots={slots} value={start} onChange={setStart} compact />
                 )}
                 <div className="row">
                   <button type="button" className="btn ghost sm" onClick={() => go(1)}>‹ Back</button>
@@ -444,7 +452,6 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
           {step === 3 && (
             <div className="cols">
               <form className="main panel stack g24" onSubmit={pay} noValidate={false}>
-                <p className="h3" style={{ margin: 0 }}>Your details</p>
                 <div className="fields">
                   <label className="fld">Full name<input required maxLength={80} autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
                   <label className="fld">Email<input required maxLength={254} type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
@@ -477,7 +484,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
                   <button type="button" className="btn ghost sm" onClick={() => go(2)}>‹ Back</button>
                   <button type="submit" className="btn" disabled={busy || !cfg}>{busy ? 'Opening payment…' : `Pay ${kr(q.total)}`}</button>
                 </div>
-                <p className="muted small" style={{ margin: 0 }}>Secure payment by Stripe: card, Apple Pay or Google Pay. If you picked a time, we hold it for you while you pay.</p>
+                <p className="muted small" style={{ margin: 0 }}>Secure payment by Stripe: card, Apple Pay or Google Pay. We hold your time while you pay.</p>
               </form>
               {summary}
             </div>

@@ -436,3 +436,38 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
 .upsell b { color: var(--blue); }
 .upsell span { font-size: 13px; color: var(--muted); }
 .bookpage { padding-top: 32px; }
+/* booking page: everything in one screen */
+.bookpage.band.tight { padding-top: 16px; padding-bottom: 24px; }
+.bookpage .book { padding: 20px 24px; gap: 14px; border-radius: 24px; }
+.bookpage .panel { padding: 20px 22px; }
+.bookpage .main.panel.stack { gap: 14px; }
+.stepbtn { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: #CCC; }
+.stepbtn:hover { color: var(--ink); text-decoration-color: var(--ink); }
+.bookpage .mpick.side-by-side { gap: 20px; }
+.bookpage .mcal { gap: 8px; }
+.bookpage .mcal-head b { font-size: 16px; }
+.bookpage .mnav { width: 32px; height: 32px; font-size: 16px; }
+.bookpage .mgrid { gap: 4px; }
+.bookpage .mday { height: 38px; font-size: 14px; border-radius: 8px; }
+.bookpage .mday i { bottom: 4px; width: 4px; height: 4px; margin-left: -2px; }
+.bookpage .tslot { padding: 10px 14px; }
+.bookpage .tslot[aria-pressed='true'] { padding: 9px 13px; }
+.bookpage .tslot b { font-size: 16px; }
+.bookpage .sum { padding: 20px 22px; gap: 8px; font-size: 14px; }
+.bookpage .sum .tot { font-size: 18px; }
+.bookpage .sum ul { font-size: 13px; }
+.bookpage .upsell { padding: 9px 12px; font-size: 13px; }
+.bookpage .plan { padding: 18px; gap: 4px; }
+.bookpage .plan.sel { padding: 17px; }
+.bookpage .plan.rec { transform: none; padding: 18px 16px; }
+.bookpage .plan .inc { display: none; }
+.bookpage .plan .btn { margin-top: 12px; min-height: 42px; }
+.bookpage .fields { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; }
+.bookpage .fld { font-size: 13px; gap: 4px; }
+.bookpage .fld input, .bookpage .fld select { min-height: 40px; padding: 8px 12px; font-size: 15px; }
+.bookpage .checks { gap: 6px; }
+.bookpage .chk { font-size: 13px; line-height: 1.4; gap: 10px; }
+.bookpage .chk input { width: 18px; height: 18px; }
+.bookpage form.main.panel.stack { gap: 14px; }
+.bookpage .checks legend { margin-bottom: 4px; }
+.bookpage .fld small { font-size: 12px; }
