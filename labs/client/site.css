@@ -432,3 +432,7 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
   .sacts { justify-content: flex-start; }
 }
 .pill.bad { background: #FFE5E5; color: #A30000; }
+.upsell { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--blue); background: #F3F3FF; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.upsell b { color: var(--blue); }
+.upsell span { font-size: 13px; color: var(--muted); }
+.bookpage { padding-top: 32px; }

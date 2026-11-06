@@ -5,7 +5,7 @@ import type { Order } from '../core/types';
 import type { Config } from '../core/config';
 import { hmacHex } from './auth';
 
-export async function createCheckout(env: Env, config: Config, order: Order, email: string, appUrl: string, cancelPath = '/?cancelled=1'): Promise<string> {
+export async function createCheckout(env: Env, config: Config, order: Order, email: string, appUrl: string, cancelPath = `/book?cancelled=1&qty=${order.qty}`): Promise<string> {
   // Safety lock: real payments only once ALLOW_LIVE_PAYMENTS is deliberately set to "yes" for launch.
   const key = env.STRIPE_SECRET_KEY || '';
   if (/^(sk|rk)_live_/.test(key) && env.ALLOW_LIVE_PAYMENTS !== 'yes') {

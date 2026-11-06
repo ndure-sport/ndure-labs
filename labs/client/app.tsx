@@ -8,7 +8,7 @@ import { fmt, when, cphDate, cphOffset } from '../core/time';
 import type { ConsentKey, Booking, Customer, Order } from '../core/types';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { MonthPicker } from './picker';
-import { Landing } from './landing';
+import { Landing, BookPage } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
 import { Opening, type OpeningData } from './opening';
 
@@ -192,11 +192,13 @@ function SessionCard({ b, busy, onMove, onCancel, confirming, onConfirm, onKeep 
 }
 
 function AddSessions({ t, busy, onBuy }: { t: NonNullable<TopUp>; busy: boolean; onBuy: (n: number) => void }) {
-  const [n, setN] = useState(1);
+  const snapshot = t.has === 1 && t.max >= 2;
+  const [n, setN] = useState(snapshot ? 2 : 1);
   const opt = t.options.find((o) => o.n === n) ?? t.options[0];
   return (
     <div className="stack g12">
-      <h3 style={{ margin: 0 }}>Add sessions</h3>
+      <h3 style={{ margin: 0 }}>{snapshot ? 'Upgrade to Progress' : 'Add sessions'}</h3>
+      {snapshot && <p className="small" style={{ margin: 0 }}>One test is a snapshot. The value is in coming back: add 2 sessions and pay the Progress price, {kr(opt.unit)} a session.</p>}
       <p className="small muted" style={{ margin: 0 }}>You pay the same as if you had bought {t.has + n} sessions in one go. Extra sessions are valid until {fmt(t.expiresAt, { day: 'numeric', month: 'short', year: 'numeric' })}.</p>
       <div className="row spread" style={{ alignItems: 'center' }}>
         <span className="stepper">
@@ -708,6 +710,7 @@ function App() {
   if (p.startsWith('/stop/')) return <StopReminders />;
   if (p.startsWith('/team')) return <Team />;
   if (p.startsWith('/account')) return <Account />;
+  if (p === '/book') return <BookPage />;
   if (p === '/terms') return <Terms />;
   if (p === '/privacy') return <Privacy />;
   if (p === '/health-check') return <HealthCheck />;

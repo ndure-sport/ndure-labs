@@ -71,10 +71,16 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
 
   // Booking: Snapshot first, then back and Progress.
   await page.getByRole('button', { name: 'Choose Snapshot' }).click();
+  await page.waitForURL(/\/book\?qty=1/);
+  ok('Choose opens the booking page', page.url().includes('/book?qty=1'));
+  await page.getByText('Pick your session', { exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
   ok('step 2 opens', await page.getByText('Pick your session', { exact: true }).isVisible());
+  ok('booking page starts at the top', (await page.evaluate(() => scrollY)) === 0);
+  ok('Snapshot shows the upgrade to Progress', await page.getByText('Upgrade to Progress: 3 sessions at 435 kr each').isVisible());
   ok('no "choose later" any more', (await page.getByText('Choose dates later').count()) === 0);
   ok('Next is locked until a time is picked', await page.getByRole('button', { name: 'Next: your details' }).isDisabled());
   await page.getByRole('button', { name: '‹ Back' }).click();
+  ok('Back shows the packs on the booking page', await page.getByRole('button', { name: 'Choose Progress' }).isVisible() && page.url().endsWith('/book'));
   await page.getByRole('button', { name: 'Choose Progress' }).click();
   ok('Progress: other sessions are booked later from the account', await page.getByText('Your other 2 sessions you book later').isVisible());
   ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
@@ -111,7 +117,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   const orderId = stripeUrl?.split('/').pop();
 
   // Cancel on Stripe: back on the page with a clear message.
-  await page.goto(BASE + '/?cancelled=1', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/book?cancelled=1&qty=3', { waitUntil: 'networkidle' });
   ok('cancelled payment message shown', await page.getByText('Payment was cancelled').isVisible());
 
   // Pay: webhook, then Stripe sends the rider to the account page.
@@ -178,6 +184,9 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     await page.getByLabel('Email').fill('team@ndure.dk');
     await page.getByRole('button', { name: 'Send code' }).click();
     await page.waitForTimeout(1500);
+    if (await page.getByText('Too many codes requested').isVisible()) {
+      console.log('SKIP  team page: too many login codes for team@ndure.dk in the last hour (from earlier runs)');
+    } else {
     const tcode = lastEmail('team@ndure.dk')?.subject.match(/\d{6}/)?.[0];
     await page.getByLabel('Code').fill(tcode || '');
     await page.getByRole('button', { name: 'Log in' }).click();
@@ -186,6 +195,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     ok('team list shows the rider with Move date', (await page.locator('.srow', { hasText: 'Browser Rider' }).count()) >= 1 && (await page.getByRole('button', { name: '↔ Move date' }).count()) >= 1);
     ok('free spots can be booked', (await page.getByRole('button', { name: '+ Book a rider' }).count()) >= 1);
     await shot(page, `${label}-6-team`);
+    }
   }
 
   ok('no script errors', errors.length === 0, errors.join(' | '));

@@ -1,6 +1,6 @@
 // The NDURE Labs page (design N1) with the real booking flow built in.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { quote, type Slot } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
 import { fmt, when, cphDate } from '../core/time';
@@ -19,9 +19,6 @@ const introHref = LINKS.introCall || `mailto:${CONTACT_EMAIL}?subject=${encodeUR
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const clock = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
 
-function scrollToBook() {
-  document.getElementById('book')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-}
 
 // Reveal sections as they come into view, and count numbers up once.
 function useReveal() {
@@ -229,12 +226,72 @@ const LINK_FOR: Partial<Record<ConsentKey, [string, string]>> = {
   terms: ['/terms', 'Read the terms']
 };
 
+// The three packs. On the Labs page "Choose" opens the booking page; on the booking page it goes to the date.
+function Plans({ qty, onPick, onChoose }: { qty: number; onPick: (n: number) => void; onChoose: (n: number) => void }) {
+  return (
+    <>
+      <div className="plans" role="list">
+        {PACKS.map((n) => {
+          const p = PLAN_INFO[n];
+          const pq = quote(CFG, n, false);
+          const rec = n === RECOMMENDED;
+          return (
+            <div key={n} role="listitem" className={`plan${rec ? ' rec' : ''}${qty === n ? ' sel' : ''}`} onClick={() => onPick(n)}>
+              <span className="tag">{rec && <b>RECOMMENDED</b>}</span>
+              <span className="h3">{p.tier}</span>
+              <span className="m">{n === 1 ? '1 session' : `${n} sessions`}</span>
+              <span className="price"><b>{kr(pq.unit)}</b><span className="m">per session</span></span>
+              <span className="m">{n === 1 ? 'one session' : `${kr(pq.total)} in total`}</span>
+              {pq.saving > 0 && <span className="save">Save {kr(pq.saving)}</span>}
+              <span className="m" style={{ marginTop: 6 }}>{p.line}</span>
+              <ul className="inc"><p>WHAT YOU GET</p>{p.inc.map((t) => <li key={t}>{t}</li>)}</ul>
+              <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onChoose(n); }}>Choose {p.tier}</button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="note-s">We suggest a session every 8 weeks. Packs are valid for {CFG.validityMonths} months: book the rest whenever you want.</p>
+    </>
+  );
+}
+
+const bookHref = (n: number) => {
+  const src = new URLSearchParams(location.search).get('src');
+  return `/book?qty=${n}${src ? `&src=${encodeURIComponent(src)}` : ''}`;
+};
+
+// Prices on the Labs page: the packs, each opens the booking page.
+function Prices() {
+  const [qty, setQty] = useState(RECOMMENDED);
+  return (
+    <section id="book" className="band tight" aria-labelledby="book-t">
+      <div className="stack g24">
+        <div className="stack g12">
+          <p className="eb">Prices</p>
+          <h2 id="book-t" className="h2">Choose your sessions.</h2>
+        </div>
+        <div className="book">
+          <div className="steps">
+            <span />
+            <a href="/account" style={{ fontSize: 14 }}>Already have sessions? Log in</a>
+          </div>
+          <Plans qty={qty} onPick={setQty} onChoose={(n) => location.assign(bookHref(n))} />
+        </div>
+        <p className="note-s" style={{ textAlign: 'center' }}>Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a> for team pricing. Questions first? <a href={introHref}>Book a free 15 minute call</a>.</p>
+      </div>
+    </section>
+  );
+}
+
 function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slotError: string | null; reloadSlots: () => void }) {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const startQty = Number(params.get('qty'));
   const [cfg, setCfg] = useState<PublicConfig | null>(null);
   const [cfgErr, setCfgErr] = useState(false);
-  const [step, setStep] = useState(PACKS.includes(startQty) ? 2 : 1);
+  const [step, setStep] = useState(() => {
+    const st = Number(params.get('step'));
+    return PACKS.includes(startQty) ? (st === 3 ? 2 : 2) : 1; // never land on the details step without a picked time
+  });
   const [qty, setQty] = useState(PACKS.includes(startQty) ? startQty : RECOMMENDED);
   const [start, setStart] = useState<string | null>(null);
   const [f, setF] = useState({ name: '', email: '', phone: '', ftp: '', goal: 'Racing' });
@@ -242,15 +299,26 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   const [human, setHuman] = useState('');
   const [tsRound, setTsRound] = useState(0); // a bot check token works once: show a fresh one after a failed try
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<Note>(params.get('cancelled') ? { kind: 'err', text: 'Payment was cancelled. Nothing was charged. Your choices are below, so you can try again.' } : null);
-  const top = useRef<HTMLDivElement>(null);
+  const [note, setNote] = useState<Note>(params.get('cancelled') ? { kind: 'err', text: 'Payment was cancelled. Nothing was charged. Pick a time again to try again.' } : null);
 
   const loadCfg = useCallback(() => {
     setCfgErr(false);
     getConfig().then(setCfg).catch(() => setCfgErr(true));
   }, []);
   useEffect(loadCfg, [loadCfg]);
-  useEffect(() => { if (params.get('cancelled') || params.get('qty')) setTimeout(scrollToBook, 300); }, [params]);
+  // Browser back and forward move between the steps.
+  useEffect(() => {
+    const onPop = () => {
+      const u = new URLSearchParams(location.search);
+      const n = Number(u.get('qty'));
+      if (PACKS.includes(n)) setQty(n);
+      setStep(PACKS.includes(n) ? Math.min(Number(u.get('step')) || 2, start ? 3 : 2) : 1);
+      setNote(null);
+      window.scrollTo(0, 0);
+    };
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
+  }, [start]);
 
   const q = quote(CFG, qty, false);
   const info = PLAN_INFO[qty];
@@ -259,14 +327,19 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
     if (slots && start && !slots.some((s) => s.start === start)) setStart(null);
   }, [slots]);
 
-  const go = (n: number) => {
+  // Each step is its own view: the page starts at the top, no smooth scrolling around.
+  const go = (n: number, q = qty) => {
     setStep(n);
     setNote(null);
-    requestAnimationFrame(() => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    const u = new URLSearchParams(location.search);
+    u.delete('cancelled');
+    if (n === 1) { u.delete('qty'); u.delete('step'); } else { u.set('qty', String(q)); u.set('step', String(n)); }
+    history.pushState(null, '', `/book${u.toString() ? `?${u}` : ''}`);
+    window.scrollTo(0, 0);
   };
   const choose = (n: number) => {
     setQty(n);
-    go(2);
+    go(2, n);
   };
 
   const missing = (cfg?.required ?? []).filter((k) => !consents[k]);
@@ -294,10 +367,10 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
         const lost = start;
         setStart(null);
         reloadSlots();
-        setStep(2);
+        go(2);
         setNote({ kind: 'err', text: lost ? `Sorry, ${clock(lost)} on ${longDay(lost)} was just taken by someone else. Nothing was charged. Pick another time.` : err.message });
       } else setNote({ kind: 'err', text: err.message });
-      requestAnimationFrame(() => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      window.scrollTo(0, 0);
     }
   }
 
@@ -309,6 +382,17 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
       <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>Diplomvej 376<br />2800 Kongens Lyngby</span></div>
       <div className="ln"><span>Per session</span><span>{q.saving > 0 && <s style={{ color: '#999', marginRight: 6 }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
       <div className="ln tot"><span style={{ color: '#000' }}>Total</span><span>{kr(q.total)}</span></div>
+      {(() => {
+        const up = PACKS.find((n) => n > qty);
+        if (!up) return null;
+        const uq = quote(CFG, up, false);
+        return (
+          <button type="button" className="upsell" onClick={() => { setQty(up); const u = new URLSearchParams(location.search); u.set('qty', String(up)); history.replaceState(null, '', `/book?${u}`); }}>
+            <b>Upgrade to {PLAN_INFO[up].tier}: {up} sessions at {kr(uq.unit)} each</b>
+            <span>{kr(uq.total)} in total, {kr(uq.total - q.total)} more. Same first date, book the rest later.</span>
+          </button>
+        );
+      })()}
       <ul>
         <li>Move or cancel for free until 24 hours before</li>
         <li>Pay once. No subscription</li>
@@ -318,12 +402,9 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   );
 
   return (
-    <section id="book" className="band tight" aria-labelledby="book-t">
+    <section className="band tight bookpage" aria-labelledby="book-t">
       <div className="stack g24">
-        <div className="stack g12" ref={top} style={{ scrollMarginTop: 88 }}>
-          <p className="eb">Prices</p>
-          <h2 id="book-t" className="h2">Choose your sessions.</h2>
-        </div>
+        <h1 id="book-t" className="h2">{step === 1 ? 'Choose your sessions.' : step === 2 ? 'Pick a date.' : 'Your details.'}</h1>
         <div className="book">
           <div className="steps">
             <ol aria-label="Booking steps">
@@ -335,31 +416,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
           </div>
           <Msg note={note} />
 
-          {step === 1 && (
-            <>
-              <div className="plans" role="list">
-                {PACKS.map((n) => {
-                  const p = PLAN_INFO[n];
-                  const pq = quote(CFG, n, false);
-                  const rec = n === RECOMMENDED;
-                  return (
-                    <div key={n} role="listitem" className={`plan${rec ? ' rec' : ''}${qty === n ? ' sel' : ''}`} onClick={() => setQty(n)}>
-                      <span className="tag">{rec && <b>RECOMMENDED</b>}</span>
-                      <span className="h3">{p.tier}</span>
-                      <span className="m">{n === 1 ? '1 session' : `${n} sessions`}</span>
-                      <span className="price"><b>{kr(pq.unit)}</b><span className="m">per session</span></span>
-                      <span className="m">{n === 1 ? 'one session' : `${kr(pq.total)} in total`}</span>
-                      {pq.saving > 0 && <span className="save">Save {kr(pq.saving)}</span>}
-                      <span className="m" style={{ marginTop: 6 }}>{p.line}</span>
-                      <ul className="inc"><p>WHAT YOU GET</p>{p.inc.map((t) => <li key={t}>{t}</li>)}</ul>
-                      <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); choose(n); }}>Choose {p.tier}</button>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="note-s">We suggest a session every 8 weeks. Packs are valid for {CFG.validityMonths} months: book the rest whenever you want.</p>
-            </>
-          )}
+          {step === 1 && <Plans qty={qty} onPick={setQty} onChoose={choose} />}
 
           {step === 2 && (
             <div className="cols">
@@ -451,12 +508,32 @@ export function Landing() {
       <main>
         <Hero firstFree={firstFree} />
         <Vision />
-        <Booking slots={slots} slotError={slotError} reloadSlots={loadSlots} />
+        <Prices />
         <Process />
         <Practical />
         <Jack />
         <Close />
       </main>
+      <Footer />
+    </>
+  );
+}
+
+// ---------------- the booking page (/book) ----------------
+export function BookPage() {
+  const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [slotError, setSlotError] = useState<string | null>(null);
+  const loadSlots = useCallback(() => {
+    setSlotError(null);
+    setSlots(null);
+    api<{ slots: Slot[] }>('/api/slots?need=1').then((d) => setSlots(d.slots)).catch((e) => setSlotError((e as Error).message));
+  }, []);
+  useEffect(loadSlots, [loadSlots]);
+  useEffect(() => { document.title = 'Book, NDURE Labs'; }, []);
+  return (
+    <>
+      <Header />
+      <main><Booking slots={slots} slotError={slotError} reloadSlots={loadSlots} /></main>
       <Footer />
     </>
   );
