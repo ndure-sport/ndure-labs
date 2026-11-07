@@ -63,7 +63,13 @@ export type Booking = {
   cancelledAt: string | null;
   cancelledBy: 'rider' | 'team' | null;
   creditReturned: boolean;
+  // The report after the session, set by hand on the team page. Only for sessions marked as came.
+  report?: ReportStatus | null;
+  reportNote?: string | null;
+  reportLink?: string | null;
+  reportAt?: string | null; // when it was marked as sent
 };
+export type ReportStatus = 'todo' | 'sent' | 'redo';
 
 // Someone who might book: met at an event, asked for a call, wrote on Instagram.
 export type LeadStatus = 'new' | 'contacted' | 'interested' | 'not_now' | 'booked';

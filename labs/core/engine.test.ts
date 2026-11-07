@@ -532,3 +532,42 @@ test('emails: the off list in the config stops those automatic emails', () => {
   assert.ok(sent.includes('confirmation'));
   assert.ok(!sent.includes('after') && !sent.includes('reminder'), sent.join(','));
 });
+
+test('reports: to do after came, sent and redo by hand, never touches sessions or emails', () => {
+  const { labs, tick } = setup();
+  const start = labs.slots()[0].start;
+  const o = labs.checkout(rider('rep@x.dk', { qty: 3, start }));
+  labs.paid(o.id);
+  const b = labs.db.bookings.find((x) => x.orderId === o.id)!;
+  assert.throws(() => labs.setReport(b.id, { status: 'sent' }), /came first/);
+  tick(Date.parse(start) - Date.parse('2026-11-30T10:00:00+01:00') + 60_000);
+  const before = { balance: labs.balance(o.customerId).total, emails: labs.db.emails.length };
+  labs.markAttendance(b.id, 'attended');
+  assert.equal(b.report, 'todo');
+  assert.deepEqual(labs.reports().open.map((r) => r.id), [b.id]);
+  assert.throws(() => labs.setReport(b.id, { status: 'done' }), /To do, Sent or Redo/);
+  assert.throws(() => labs.setReport(b.id, { status: 'sent', link: 'dropbox/report.pdf' }), /https/);
+  assert.throws(() => labs.setReport(b.id, { status: 'sent', link: 'javascript:alert(1)' }), /https/);
+  labs.setReport(b.id, { status: 'sent', link: 'https://www.dropbox.com/s/abc/report.pdf', note: 'Zones look good\nnew line' });
+  assert.equal(b.report, 'sent');
+  assert.ok(b.reportAt);
+  assert.equal(b.reportNote, 'Zones look good new line');
+  assert.equal(labs.reports().open.length, 0);
+  assert.equal(labs.reports().sent[0].link, 'https://www.dropbox.com/s/abc/report.pdf');
+  labs.setReport(b.id, { status: 'redo', note: 'Bad sensor data' });
+  assert.equal(b.reportAt, null);
+  assert.equal(b.reportLink, 'https://www.dropbox.com/s/abc/report.pdf'); // a missing link field keeps the link
+  assert.equal(labs.reports().open[0].report, 'redo');
+  labs.setReport(b.id, { status: 'todo', link: '' });
+  assert.equal(b.reportLink, null);
+  // Changing to no show clears an open report; sessions and emails are untouched throughout.
+  labs.markAttendance(b.id, 'no_show');
+  assert.equal(b.report, null);
+  assert.equal(labs.reports().open.length, 0);
+  assert.equal(labs.balance(o.customerId).total, before.balance);
+  assert.equal(labs.db.emails.length, before.emails);
+  // Old bookings saved before this feature (no report field) count as to do once marked came.
+  labs.markAttendance(b.id, 'attended');
+  delete (b as { report?: unknown }).report;
+  assert.equal(labs.reports().open[0].report, 'todo');
+});

@@ -367,6 +367,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
       return {
         me,
         days: e.teamDays(),
+        reports: e.reports(),
         riders: e.customersOverview().map((c) => ({
           id: c.id, name: c.name, email: c.email, phone: c.phone, balance: c.balance.total,
           next: c.upcoming[0]?.start ?? null, last: c.past[0]?.start ?? null,
@@ -454,6 +455,10 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         switch (b.action) {
           case 'attended': e.markAttendance(bookingId, 'attended'); return e.audit(me, 'attended', who(bookingId));
           case 'no_show': e.markAttendance(bookingId, 'no_show'); return e.audit(me, 'no show', who(bookingId));
+          case 'report': {
+            const bk = e.setReport(bookingId, { status: b.status, note: b.note, link: b.link });
+            return e.audit(me, `report ${bk.report}`, who(bookingId));
+          }
           case 'cancel': {
             const d = who(bookingId);
             e.cancel(bookingId, 'team', b.returnCredit !== false);

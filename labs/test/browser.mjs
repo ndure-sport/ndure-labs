@@ -83,6 +83,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('Back shows the packs on the booking page', await page.getByRole('button', { name: 'Choose Progress' }).isVisible() && page.url().endsWith('/book'));
   await page.getByRole('button', { name: 'Choose Progress' }).click();
   ok('Progress: other sessions are booked later from the account', await page.getByText('Your other 2 sessions you book later').isVisible());
+  await page.locator('button.mday').first().waitFor({ timeout: 10000 }).catch(() => {});
   ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
   const firstDay = await page.locator('button.mday').first().getAttribute('aria-label');
   ok('first bookable day is on or after 1 December', /December|January|February/.test(firstDay), firstDay);

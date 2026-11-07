@@ -3,7 +3,7 @@
 // on Cloudflare with a real database.
 
 import type { Config, Block } from './config';
-import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact } from './types';
+import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact, ReportStatus } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
 export const CONSENT_VERSION = '2026-11-04';
@@ -589,7 +589,41 @@ export class Labs {
     if (b.status === 'cancelled') throw new LabsError('This session was cancelled.', 'cancelled');
     if (Date.parse(b.start) > this.now()) throw new LabsError('Mark attendance once the session has started.', 'future');
     b.status = status; // a no show keeps the session used
+    if (status === 'attended' && !b.report) b.report = 'todo';
+    if (status === 'no_show' && b.report === 'todo') b.report = null; // no report for someone who didn't come
     return b;
+  }
+
+  // ---------- reports ----------
+  // Anna sends the report herself; here the team only keeps track of it. Never touches sessions or emails.
+  setReport(bookingId: string, input: { status: unknown; note?: unknown; link?: unknown }): Booking {
+    const b = this.booking(bookingId);
+    if (b.status !== 'attended') throw new LabsError('Mark the rider as came first.', 'report');
+    const status = input.status as ReportStatus;
+    if (!['todo', 'sent', 'redo'].includes(status)) throw new LabsError('Pick To do, Sent or Redo.', 'report');
+    if (input.link !== undefined) {
+      const link = clean(input.link, 500);
+      if (link && !/^https:\/\/[^\s]+\.[^\s]+/.test(link)) throw new LabsError('Paste the full link, starting with https://', 'report');
+      b.reportLink = link || null;
+    }
+    if (input.note !== undefined) b.reportNote = clean(input.note, 300) || null;
+    if (status === 'sent' && b.report !== 'sent') b.reportAt = this.iso();
+    if (status !== 'sent') b.reportAt = null;
+    b.report = status;
+    return b;
+  }
+
+  // Sessions that came in: reports still to do or to redo (oldest first), then the ones sent in the last 14 days.
+  reports() {
+    const since = this.now() - hours(24 * 14);
+    const rows = this.db.bookings
+      .filter((b) => b.status === 'attended' && ((b.report ?? 'todo') !== 'sent' || Date.parse(b.reportAt ?? b.start) >= since))
+      .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
+      .map((b) => {
+        const c = this.customer(b.customerId);
+        return { id: b.id, start: b.start, label: b.label, name: c.name, email: c.email, report: (b.report ?? 'todo') as ReportStatus, note: b.reportNote ?? null, link: b.reportLink ?? null, sentAt: b.reportAt ?? null };
+      });
+    return { open: rows.filter((r) => r.report !== 'sent'), sent: rows.filter((r) => r.report === 'sent').reverse() };
   }
 
   // ---------- team tools ----------

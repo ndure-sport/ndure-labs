@@ -360,6 +360,64 @@ function Account() {
   );
 }
 
+// ---------------- team: reports ----------------
+type ReportRow = { id: string; start: string; label: string; name: string; email: string; report: 'todo' | 'sent' | 'redo'; note: string | null; link: string | null; sentAt: string | null };
+const REPORT_LABEL = { todo: 'Report to do', sent: 'Report sent', redo: 'Redo report' } as const;
+const REPORT_PILL = { todo: 'due', sent: 'ok', redo: 'bad' } as const;
+
+function ReportLine({ r, act }: { r: ReportRow; act: Act }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ link: r.link ?? '', note: r.note ?? '' });
+  const save = async (status: ReportRow['report']) => {
+    if (await act({ action: 'report', bookingId: r.id, status, link: f.link.trim(), note: f.note }, `${r.name}: ${REPORT_LABEL[status].toLowerCase()}.`)) setOpen(false);
+  };
+  return (
+    <div className="rline">
+      <div className="rline-top">
+        <span className="scell"><b>{r.name}</b><span className="small muted">{when(r.start)} · <a href={`mailto:${r.email}`}>{r.email}</a></span></span>
+        <span className="pills"><span className={`pill ${REPORT_PILL[r.report]}`}>{REPORT_LABEL[r.report]}</span>{r.link && <a className="small" href={r.link} target="_blank" rel="noopener noreferrer">Open report</a>}</span>
+        <span className="sacts">
+          {!open && r.report !== 'sent' && <button className="sbtn go" onClick={() => setOpen(true)}>✓ Mark as sent</button>}
+          {!open && <button className="sbtn" onClick={() => setOpen(true)}>{r.report === 'sent' ? 'Change' : 'Note or redo'}</button>}
+        </span>
+      </div>
+      {r.note && !open && <p className="small muted" style={{ margin: 0 }}>{r.note}</p>}
+      {open && (
+        <div className="rform">
+          <label>Dropbox link to the report<input type="url" maxLength={500} placeholder="https://www.dropbox.com/..." value={f.link} onChange={(e) => setF({ ...f, link: e.target.value })} /></label>
+          <label>Note<input maxLength={300} placeholder="For example: bad data, redo booked" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+          <span className="row">
+            <button className="sbtn go" onClick={() => save('sent')}>✓ Sent</button>
+            <button className="sbtn red" onClick={() => save('redo')}>Redo</button>
+            <button className="sbtn" onClick={() => save('todo')}>To do</button>
+            <button className="sbtn" onClick={() => setOpen(false)}>Close</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Reports({ d, act }: { d: TeamData['reports']; act: Act }) {
+  const [showSent, setShowSent] = useState(false);
+  return (
+    <section className="card" style={{ gap: 12 }} id="reports">
+      <div className="row spread">
+        <h2 style={{ margin: 0, fontSize: 22 }}>Reports to do {d.open.length > 0 && <span className="badge">{d.open.length}</span>}</h2>
+        <span className="small muted">Anna sends the report from Outlook, then marks it here.</span>
+      </div>
+      {d.open.length === 0 && <p className="muted small" style={{ margin: 0 }}>All reports are sent.</p>}
+      {d.open.map((r) => <ReportLine key={r.id} r={r} act={act} />)}
+      {d.sent.length > 0 && (
+        <>
+          <button className="sbtn" style={{ alignSelf: 'flex-start' }} onClick={() => setShowSent(!showSent)}>{showSent ? 'Hide' : 'Show'} sent in the last 14 days ({d.sent.length})</button>
+          {showSent && d.sent.map((r) => <ReportLine key={r.id} r={r} act={act} />)}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ---------------- team: sessions ----------------
 type Act = (payload: object, ok: string) => Promise<boolean>;
 const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -465,6 +523,7 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
                   <span className="scell small">{r.customer.phone ? <a href={`tel:${r.customer.phone.replace(/\s/g, '')}`}>{r.customer.phone}</a> : <span className="muted">No phone</span>}<a className="muted ell" href={`mailto:${r.customer.email}`}>{r.customer.email}</a></span>
                   <span className="pills">
                     {r.status === 'attended' && <span className="pill ok">Came</span>}
+                    {r.status === 'attended' && <span className={`pill ${REPORT_PILL[r.report ?? 'todo']}`}>{REPORT_LABEL[r.report ?? 'todo']}</span>}
                     {r.status === 'no_show' && <span className="pill bad">No show</span>}
                     {cs?.health && partnerOk ? <span className="pill ok">Health ok</span> : <span className="pill bad">Consent missing</span>}
                     {cs?.film && <span className="pill fine">Film ok</span>}
@@ -521,6 +580,7 @@ type TeamData = {
   audit: { at: string; by: string; action: string; detail: string }[];
   opening: OpeningData;
   emails: { paused: { at: string; count: number } | null };
+  reports: { open: ReportRow[]; sent: ReportRow[] };
 };
 
 function Team() {
@@ -580,7 +640,12 @@ function Team() {
           <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setTab(k)}>{l}</button>
         ))}
       </nav>
-      {tab === 'sessions' && <Sessions t={t} act={act} onLogout={() => { setT(null); setNeedLogin(true); }} />}
+      {tab === 'sessions' && (
+        <>
+          {t.reports && <Reports d={t.reports} act={act} />}
+          <Sessions t={t} act={act} onLogout={() => { setT(null); setNeedLogin(true); }} />
+        </>
+      )}
       {tab === 'opening' && <Opening o={t.opening} act={act} />}
       {tab === 'admin' && (
         <>

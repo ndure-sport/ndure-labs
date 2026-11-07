@@ -471,3 +471,11 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
 .bookpage form.main.panel.stack { gap: 14px; }
 .bookpage .checks legend { margin-bottom: 4px; }
 .bookpage .fld small { font-size: 12px; }
+/* team: reports */
+.rline { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid #F0F0F0; }
+.rline-top { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 12px; align-items: center; }
+.rform { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.rform label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
+.rform input { min-height: 38px; border: 1px solid #CCC; border-radius: 10px; padding: 6px 10px; font: inherit; font-size: 14px; }
+.rform .row { grid-column: 1 / -1; }
+@media (max-width: 700px) { .rline-top, .rform { grid-template-columns: 1fr; } .rline-top .sacts { justify-content: flex-start; } }
