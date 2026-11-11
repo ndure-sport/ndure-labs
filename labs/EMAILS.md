@@ -106,7 +106,7 @@ Sent to everyone in `TEAM_EMAILS` (set in Cloudflare).
 
 | Email | When |
 |---|---|
-| Today at Labs | Every opening day at 07:00: the day's riders with phone, FTP and goal |
+| Today at Labs | Every opening day at 07:00: the day's riders with phone (FTP and goal only for riders who gave them before; new riders give them in the pre session form) |
 | Booking soon | A booking, move or cancel for a session in the next 48 hours |
 | Alert | Late payments, emails failing, automatic emails paused |
 | Calendar invite | Every booking, move and cancel, only if `TEAM_CALENDAR_EMAIL` is set |

@@ -34,7 +34,7 @@ export const PLAN_ORDER = [1, 3, 6];
 export const FLOW: [string, string][] = [
   ['Book online', 'Pick your sessions and a date, at least 1 week ahead. Pay once.'],
   ['Get ready', 'You get a confirmation and calendar invite, and fill in a short form. Easy day before.'],
-  ['Come to the lab', 'Your tester picks you up at the DTU Science Park reception, Diplomvej 381. We set up the bike and the sensor.'],
+  ['Come to the lab', 'We pick you up at the DTU Science Park reception, Diplomvej 381, and set up the bike and the sensor.'],
   ['Ride the test', 'About an hour, a bit harder every few minutes. We measure your lactate.'],
   ['Get your report', 'Within 48 hours: your lactate curve, thresholds and zones.'],
   ['Train and check in', 'Train in your zones. Book your next session in 8 weeks.']

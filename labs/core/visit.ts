@@ -7,11 +7,11 @@ import { fmt } from './time';
 export const MEET = 'DTU Science Park reception, Diplomvej 381, 2800 Kongens Lyngby';
 export const MEET_SHORT = 'DTU Science Park reception, Diplomvej 381';
 export const MEET_MAPS = 'https://maps.google.com/?q=Diplomvej+381,+2800+Kongens+Lyngby';
-export const PICKUP = 'Your tester picks you up at the reception.';
+export const PICKUP = 'We pick you up at the reception.';
 
 export const PREP = [
   'Avoid hard or long training in the 24 hours before.',
-  'Eat as you normally would, with a normal meal 2 to 3 hours before your session.',
+  'Eat as you normally would, with a normal meal 2 to 3 hours before.',
   'Drink as you normally would.'
 ];
 export const BRING = [
@@ -22,7 +22,12 @@ export const BRING = [
 ];
 export const PEDALS = 'Our bike has Shimano SPD-SL pedals. Other cleats? Bring your own pedals.';
 export const SHOWERS = 'Showers are available after your session.';
-export const BRING_SHORT = 'Cycling shoes, bib shorts, a sleeveless top, a bottle. Our bike has Shimano SPD-SL pedals: other cleats, bring your own pedals.';
+// The list as one sentence, for the session card in emails and the account page.
+export const BRING_SENTENCE = 'Cycling shoes and bib shorts, a sleeveless top (the sensor goes on your upper arm), a water bottle, your heart rate strap if you have one';
+// For calendar events, where there is one line of room.
+export const BRING_SHORT = 'cycling shoes and bib shorts, a sleeveless top, a water bottle, your heart rate strap if you have one. Our bike has Shimano SPD-SL pedals. Other cleats? Bring your own pedals.';
+// The one line version on the Labs page.
+export const BRING_LINE = 'Cycling shoes, bib shorts, a sleeveless top, a bottle';
 
 // The pre session form in Tally. Name, email, FTP, session and booking are filled in from the link.
 export const FORM_URL = 'https://tally.so/r/peyDxB';

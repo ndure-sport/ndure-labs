@@ -4,7 +4,7 @@
 
 import type { Booking, Customer, Email } from '../core/types';
 import { fmt } from '../core/time';
-import { MEET, MEET_SHORT, MEET_MAPS, BRING_SHORT, FORM_URL } from '../core/visit';
+import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, FORM_URL } from '../core/visit';
 
 const BLUE = '#0008FF';
 const PLACE = MEET;
@@ -33,7 +33,7 @@ export function sessionIcs(b: Booking, opts: { method: 'REQUEST' | 'CANCEL' | 'P
     `DTSTART:${stamp(b.start)}`, `DTEND:${stamp(b.end)}`,
     `SUMMARY:${icsEsc(opts.title ?? 'NDURE Labs lactate session')}`,
     `LOCATION:${icsEsc(PLACE)}`,
-    `DESCRIPTION:${icsEsc(opts.details ?? `Meet at the ${MEET_SHORT}: your tester picks you up. Bring: ${BRING_SHORT} Change or cancel in your NDURE Labs account.`)}`,
+    `DESCRIPTION:${icsEsc(opts.details ?? `Meet at the ${MEET_SHORT}. ${PICKUP} Bring: ${BRING_SHORT} Change or cancel in your NDURE Labs account.`)}`,
     ...(opts.method !== 'PUBLISH' ? [`ORGANIZER;CN=NDURE Labs:mailto:${opts.from}`] : []),
     ...(opts.method !== 'PUBLISH' && opts.to ? [`ATTENDEE;CN=${icsEsc(opts.to)};ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:${opts.to}`] : []),
     `STATUS:${opts.method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED'}`,
@@ -59,10 +59,46 @@ function sessionCard(b: Booking) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#F4F4F4;border-radius:16px;padding:16px 20px;margin:4px 0 8px"><tr><td>
   <table role="presentation" cellpadding="0" cellspacing="0">
     ${row('When', `<b>${esc(fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' }))}</b>, ${esc(fmt(b.start, { hour: '2-digit', minute: '2-digit' }))} to ${esc(fmt(b.end, { hour: '2-digit', minute: '2-digit' }))}`)}
-    ${row('Meet', `<a href="${MAPS}" style="color:#000000">${esc(MEET_SHORT)}</a><br><span style="color:#767676;font-size:13px">Your tester picks you up at the reception</span>`)}
-    ${row('Bring', esc(BRING_SHORT))}
+    ${row('Meet', `<a href="${MAPS}" style="color:#000000">${esc(MEET_SHORT)}</a><br><span style="color:#767676;font-size:13px">${esc(PICKUP.replace(/\.$/, ''))}</span>`)}
+    ${row('Bring', `${esc(BRING_SENTENCE)}<br><span style="color:#767676;font-size:13px">${esc(PEDALS)}</span>`)}
     ${b.withPartner && b.partnerName ? row('With', esc(b.partnerName)) : ''}
   </table></td></tr></table>`;
+}
+
+// ---------- the day before email ----------
+// Same texts as the plain version (they come from core/visit.ts), laid out in blocks: where and
+// when, how to prepare, what to bring, then the form and the closing lines.
+const LABEL = 'margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#767676';
+const list = (items: string[]) => `<ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;color:#111111">${items.map((i) => `<li style="margin:0 0 6px;padding-left:2px">${esc(i)}</li>`).join('')}</ul>`;
+function reminderBody(paras: string[], formUrl: string | null): string | null {
+  const m = paras.join(' ').match(/seeing you (today|tomorrow) at (\d{2}:\d{2})/);
+  if (!m || !paras[0]?.startsWith('Hi ')) return null;
+  const [, day, time] = m;
+  const Day = day[0].toUpperCase() + day.slice(1);
+  const form = formUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#E8E9FF;border-radius:16px;margin:28px 0 0"><tr><td style="padding:18px 20px">
+      <p style="margin:0 0 12px;font-size:15px;color:#000000"><b>Haven&#39;t filled in the pre session form yet?</b><br>Please do it ${day === 'today' ? 'now' : 'today'}, it takes 4 minutes.</p>
+      <a href="${esc(formUrl)}" style="display:inline-block;background:#000000;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:100px">Fill in the pre session form</a>
+    </td></tr></table>` : '';
+  return `<p style="margin:0 0 8px">${esc(paras[0])}</p>
+    <p style="margin:0 0 24px">We&#39;re looking forward to seeing you ${day}.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#F4F4F4;border-radius:16px;margin:0 0 32px"><tr><td style="padding:18px 20px">
+      <p style="${LABEL}">Where and when</p>
+      <p style="margin:0 0 2px;font-size:17px;font-weight:600;color:#000000">${Day}, ${time}</p>
+      <p style="margin:0 0 2px;font-size:15px;color:#000000">${esc(MEET_SHORT)}</p>
+      <p style="margin:0 0 12px;font-size:13px;color:#767676">${esc(PICKUP)}</p>
+      <a href="${MAPS}" style="font-size:14px;font-weight:600;color:${BLUE};text-decoration:none">Directions →</a>
+    </td></tr></table>
+    <p style="${LABEL}">Before your session</p>
+    <p style="margin:0 0 10px;font-size:15px;color:#111111">For reliable results you can compare next time:</p>
+    ${list(PREP)}
+    <div style="height:28px"></div>
+    <p style="${LABEL}">Please bring</p>
+    ${list(BRING)}
+    <p style="margin:12px 0 0;font-size:13px;line-height:1.5;color:#555555">${esc(PEDALS)} ${esc(SHOWERS)}</p>
+    ${form}
+    <div style="height:1px;background:#EEEEEE;margin:28px 0 20px"></div>
+    <p style="margin:0 0 8px;font-size:15px">If you feel ill, just reply to this email and we&#39;ll move your session.</p>
+    <p style="margin:0;font-size:15px">See you ${day}!</p>`;
 }
 
 // ---------- the email ----------
@@ -77,9 +113,11 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
   let paras = text.split('\n\n').map((p) => p.trim()).filter(Boolean);
   // The pre session form becomes a highlighted box with a button instead of a long link.
   let form = '';
+  let formUrl: string | null = null;
   const fi = paras.findIndex((p) => p.includes(FORM_URL));
   if (fi >= 0) {
     const url = paras[fi].match(/https:\/\/tally\.so\/r\/\S+/)?.[0] ?? FORM_URL;
+    formUrl = url;
     const say = paras[fi].replace(/:?\s*https:\/\/tally\.so\/r\/\S+/, '.').replace(/\.\.$/, '.');
     form = `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#E8E9FF;border-radius:16px;margin:8px 0 16px"><tr><td style="padding:16px 20px"><p style="margin:0 0 12px;font-size:15px;color:#000000">${esc(say)}</p>${button(url, 'Fill in the pre session form')}</td></tr></table>`;
     paras.splice(fi, 1);
@@ -91,6 +129,8 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
     const code = e.subject.match(/\d{6}/)?.[0] ?? '';
     body = `<p style="margin:0 0 8px;font-size:15px;color:#555555">Your login code</p><p style="margin:0 0 20px;font-size:40px;font-weight:600;letter-spacing:0.18em;color:#000000">${code}</p>` +
       paras.map((p) => `<p style="margin:0 0 14px;font-size:14px;color:#555555">${esc(p.replace(new RegExp(`(Your (team )?login code is )${code}\\. ?`), ''))}</p>`).join('');
+  } else if (e.template === 'reminder' && (body = reminderBody(paras, formUrl) ?? '')) {
+    // laid out above
   } else {
     body = paras.map((p) => `<p style="margin:0 0 16px">${linkify(esc(p)).replace(/\n/g, '<br>')}</p>`).join('');
     // In the reminder the form goes right before the last two lines (feeling ill, see you).
@@ -103,7 +143,7 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
   const cta =
     e.template === 'partner' && partner ? button(partner.startsWith('http') ? partner : `https://${partner}`, 'Give your consent')
     : ['payment', 'confirmation', 'rescheduled', 'cancelled', 'checkin', 'nudge', 'expiry'].includes(e.template) ? button(account, e.template === 'cancelled' || e.template === 'nudge' || e.template === 'checkin' || e.template === 'expiry' ? 'Book a session' : 'Open my account')
-    : e.template === 'reminder' ? button(MAPS, 'Directions', false)
+    : e.template === 'reminder' && !body.includes('Where and when') ? button(MAPS, 'Directions', false)
     : '';
   const card = x.booking && ['confirmation', 'rescheduled'].includes(e.template) ? sessionCard(x.booking) + (x.icsUrl && e.template !== 'reminder' ? calendarLinks(x.booking, x.icsUrl) : '') : '';
 
@@ -154,7 +194,7 @@ export const AUTOMATIONS: Automation[] = [
   { template: 'checkin', name: 'Personal check in', when: 'Only when someone on the team presses "Send check in email" (max once per 14 days per rider)', to: 'Rider', kind: 'manual' }
 ];
 export const TEAM_MAILS = [
-  'Today at Labs: the day\'s riders with phone, FTP and goal, every opening day at 07:00',
+  'Today at Labs: the day\'s riders with phone, every opening day at 07:00',
   'New booking, move or cancel for a session in the next 48 hours',
   'Alerts: late payments, payments found without webhook, emails failing, automatic emails paused',
   'Team calendar invites for every booking, move and cancel (only if TEAM_CALENDAR_EMAIL is set)'

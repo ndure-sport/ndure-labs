@@ -577,3 +577,26 @@ test('reports: to do after came, sent and redo by hand, never touches sessions o
   delete (b as { report?: unknown }).report;
   assert.equal(labs.reports().open[0].report, 'todo');
 });
+
+test('emails: confirmation and day before emails render the visit info, form box and no "tester"', async () => {
+  const { renderEmail } = await import('../worker/mail.ts');
+  const { labs, tick } = setup();
+  const o = labs.checkout(rider('a@x.dk', { qty: 3, later: true, name: 'Mette Jensen' }));
+  labs.paid(o.id);
+  const c = labs.customerByEmail('a@x.dk')!;
+  const b = labs.book(c.id, '2026-12-04T09:30:00+01:00', { by: 'rider' });
+  const conf = labs.db.emails.find((e) => e.template === 'confirmation')!;
+  tick(days(2) + hours(22));
+  const rem = labs.db.emails.find((e) => e.template === 'reminder')!;
+  const app = { appUrl: 'https://book.ndure.dk' };
+  const ch = renderEmail(conf, { ...app, booking: b, icsUrl: 'https://book.ndure.dk/x.ics' }).html;
+  const rh = renderEmail(rem, app).html;
+  for (const h of [ch, rh, conf.body, rem.body]) assert.ok(!/tester/i.test(h), 'no "tester"');
+  assert.ok(ch.includes('a sleeveless top (the sensor goes on your upper arm)') && ch.includes('Our bike has Shimano SPD-SL pedals. Other cleats? Bring your own pedals.'));
+  assert.ok(ch.includes('Fill in the pre session form') && ch.includes('We pick you up at the reception'));
+  assert.ok(rh.includes('Where and when') && rh.includes('Tomorrow, 09:30') && rh.includes('Directions →'));
+  assert.ok(rh.indexOf('Please bring') < rh.indexOf('Fill in the pre session form') && rh.indexOf('Fill in the pre session form') < rh.indexOf('If you feel ill'), 'form box at the bottom, before the closing lines');
+  assert.ok(rh.includes('email=a%40x.dk'), 'form link prefilled');
+  assert.ok(!rh.includes('>Directions</a>'), 'no separate Directions button');
+  if (process.env.WRITE_MAIL) { const fs = await import('node:fs'); fs.writeFileSync(`${process.env.WRITE_MAIL}/confirmation.html`, ch); fs.writeFileSync(`${process.env.WRITE_MAIL}/reminder.html`, rh); }
+});

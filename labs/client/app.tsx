@@ -8,7 +8,7 @@ import { fmt, when, cphDate, cphOffset } from '../core/time';
 import type { ConsentKey, Booking, Customer, Order } from '../core/types';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { MonthPicker } from './picker';
-import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING, BRING_SHORT, PEDALS, SHOWERS, formLink } from '../core/visit';
+import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, formLink } from '../core/visit';
 import { Landing, BookPage } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
 import { Opening, type OpeningData } from './opening';
@@ -183,10 +183,10 @@ function SessionCard({ b, c, busy, onMove, onCancel, confirming, onConfirm, onKe
       )}
       <dl className="sinfo">
         <dt>Meet</dt><dd><a href={MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}</a><br /><span className="muted small">{PICKUP}</span></dd>
-        <dt>Bring</dt><dd>{BRING.join(', ')}<br /><span className="muted small">{PEDALS}</span></dd>
+        <dt>Bring</dt><dd>{BRING_SENTENCE}<br /><span className="muted small">{PEDALS}</span></dd>
         <dt>Prep</dt><dd>{PREP.join(' ')}<br /><span className="muted small">{SHOWERS}</span></dd>
       </dl>
-      <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so your tester can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>
+      <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so we can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>
       <CalendarLinks b={b} />
       <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
     </div>
@@ -521,7 +521,7 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
               return (
                 <div key={r.id} className="srow">
                   <TimeChip iso={r.start} label={r.label} />
-                  <span className="scell"><b>{r.customer.name}</b>{r.withPartner && <span className="small">+ {r.partnerName}</span>}<span className="small muted">{r.customer.ftp ? `${r.customer.ftp} W` : 'No FTP'} · {r.customer.goal ?? 'No goal given'}</span></span>
+                  <span className="scell"><b>{r.customer.name}</b>{r.withPartner && <span className="small">+ {r.partnerName}</span>}{(r.customer.ftp || r.customer.goal) && <span className="small muted">{[r.customer.ftp ? `${r.customer.ftp} W` : '', r.customer.goal ?? ''].filter(Boolean).join(' · ')}</span>}</span>
                   <span className="scell small">{r.customer.phone ? <a href={`tel:${r.customer.phone.replace(/\s/g, '')}`}>{r.customer.phone}</a> : <span className="muted">No phone</span>}<a className="muted ell" href={`mailto:${r.customer.email}`}>{r.customer.email}</a></span>
                   <span className="pills">
                     {r.status === 'attended' && <span className="pill ok">Came</span>}

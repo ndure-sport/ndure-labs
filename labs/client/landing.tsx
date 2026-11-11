@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG } from '../core/config';
 import { fmt, when, cphDate } from '../core/time';
 import type { ConsentKey } from '../core/types';
 import { MonthPicker } from './picker';
-import { MEET_SHORT, MEET_MAPS } from '../core/visit';
+import { MEET_SHORT, MEET_MAPS, BRING_LINE } from '../core/visit';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note, type PublicConfig } from './shared';
 import { CONTACT_EMAIL, LINKS, OTHER_LABS_PRICE, JACK, PLAN_INFO, RECOMMENDED, PLAN_ORDER, FLOW, FAQS } from './content';
 
@@ -171,7 +171,7 @@ function Practical() {
         <div className="kv">
           <div><span>WHERE</span><a href={MEET_MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}, Kongens Lyngby</a></div>
           <div><span>WHEN</span>Tue to Fri, daytime. About 2 hours.</div>
-          <div><span>BRING</span>Cycling shoes, bib shorts, a sleeveless top, a bottle</div>
+          <div><span>BRING</span>{BRING_LINE}</div>
           <div><span>FOR</span>Any cyclist who rides regularly</div>
         </div>
         <div className="stack g16">
@@ -295,7 +295,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   });
   const [qty, setQty] = useState(PACKS.includes(startQty) ? startQty : RECOMMENDED);
   const [start, setStart] = useState<string | null>(null);
-  const [f, setF] = useState({ name: '', email: '', phone: '', ftp: '', goal: 'Racing' });
+  const [f, setF] = useState({ name: '', email: '', phone: '' });
   const [consents, setConsents] = useState<Partial<Record<ConsentKey, boolean>>>({});
   const [human, setHuman] = useState('');
   const [tsRound, setTsRound] = useState(0); // a bot check token works once: show a fresh one after a failed try
@@ -355,7 +355,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
     try {
       const d = await api<{ url: string }>('/api/checkout', {
         qty, partner: false, start,
-        name: f.name, email: f.email, phone: f.phone, ftp: f.ftp ? Number(f.ftp) : null, goal: f.goal,
+        name: f.name, email: f.email, phone: f.phone,
         consents, src: params.get('src') || 'web', turnstile: human
       });
       location.assign(d.url);
@@ -457,12 +457,6 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
                   <label className="fld">Full name<input required maxLength={80} autoComplete="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
                   <label className="fld">Email<input required maxLength={254} type="email" autoComplete="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
                   <label className="fld">Phone<input maxLength={30} type="tel" autoComplete="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /><small>So we can reach you on the day</small></label>
-                  <label className="fld">FTP in watts<input inputMode="numeric" pattern="[0-9]{0,4}" maxLength={4} value={f.ftp} onChange={(e) => setF({ ...f, ftp: e.target.value.replace(/\D/g, '') })} /><small>Optional. Helps Anna plan your test</small></label>
-                  <label className="fld">Your goal
-                    <select value={f.goal} onChange={(e) => setF({ ...f, goal: e.target.value })}>
-                      <option>Racing</option><option>Long rides</option><option>Getting fitter</option><option>Something else</option>
-                    </select>
-                  </label>
                 </div>
                 {cfgErr && <div className="stack g8"><Msg note={{ kind: 'err', text: 'Could not load the consent texts.' }} /><button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={loadCfg}>Try again</button></div>}
                 {cfg && (

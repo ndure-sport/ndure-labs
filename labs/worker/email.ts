@@ -175,7 +175,7 @@ export function dailySummary(todays: ReturnType<Labs['teamDays']>[number]['list'
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
   const lines = todays.map((r) => {
     const partner = r.withPartner ? ` + ${r.partnerName}${r.order.partnerConsents ? '' : ' (partner consent missing)'}` : '';
-    return `${fmtTime(r.start)}  ${r.customer.name}${partner}, ${r.customer.phone ?? 'no phone'}, FTP ${r.customer.ftp ?? 'n/a'}, ${r.customer.goal ?? ''}${r.customer.consents?.items.health ? '' : '  (consent missing)'}`;
+    return `${fmtTime(r.start)}  ${r.customer.name}${partner}, ${r.customer.phone ?? 'no phone'}${r.customer.ftp ? `, FTP ${r.customer.ftp}` : ''}${r.customer.goal ? `, ${r.customer.goal}` : ''}${r.customer.consents?.items.health ? '' : '  (consent missing)'}`;
   });
   return {
     subject: `Today at Labs: ${todays.reduce((n, r) => n + r.seats, 0)} riders`,

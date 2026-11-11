@@ -526,7 +526,7 @@ export class Labs {
       'confirmation',
       `confirm:${b.id}`,
       `Booked: ${when(b.start)}`,
-      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\nBefore your session, please fill in the pre session form (4 minutes), so your tester can set up your test: ${formLink(c, b)}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
+      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\nBefore your session, please fill in the pre session form (4 minutes), so we can set up your test: ${formLink(c, b)}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
     );
     return b;
   }
@@ -1082,11 +1082,10 @@ export class Labs {
         const day = sameDay ? 'today' : 'tomorrow';
         this.send(c.email, 'reminder', `reminder:${b.id}`, `Getting ready for your NDURE Labs session ${day}`, [
           `Hi ${c.name.split(' ')[0]},`,
-          `We're looking forward to seeing you ${day} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}. Your tester picks you up at the ${MEET_SHORT}.`,
-          `To get the most reliable results, and results you can compare next time:\n${PREP.map((x) => `• ${x}`).join('\n')}`,
-          `Please bring:\n${BRING.map((x) => `• ${x}`).join('\n')}\n${PEDALS}`,
-          SHOWERS,
-          `Haven't filled in the pre session form yet? Please do it ${sameDay ? 'now' : 'today'} (4 minutes): ${formLink(c, b)}`,
+          `We're looking forward to seeing you ${day} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}. We pick you up at the ${MEET_SHORT}.`,
+          `For reliable results you can compare next time:\n${PREP.map((x) => `• ${x}`).join('\n')}`,
+          `Please bring:\n${BRING.map((x) => `• ${x}`).join('\n')}\n${PEDALS} ${SHOWERS}`,
+          `Haven't filled in the pre session form yet? Please do it ${sameDay ? 'now' : 'today'}, it takes 4 minutes: ${formLink(c, b)}`,
           `If you feel ill, just reply to this email and we'll move your session.`,
           `See you ${day}!`
         ].join('\n\n'));

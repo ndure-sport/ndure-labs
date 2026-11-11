@@ -102,8 +102,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.getByLabel('Full name').fill('Browser Rider');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Phone').fill('+45 2000 0000');
-  await page.getByLabel('FTP in watts').fill('2a50');
-  ok('FTP keeps digits only', (await page.getByLabel('FTP in watts').inputValue()) === '250');
+  ok('no FTP or goal fields: the pre session form asks those', (await page.getByLabel('FTP in watts').count()) === 0 && (await page.getByLabel('Your goal').count()) === 0);
   await page.getByRole('button', { name: /^Pay / }).click();
   ok('missing consents are caught on the page', await page.getByText('Tick all the required boxes.').isVisible());
   const boxes = page.locator('.checks .chk');
