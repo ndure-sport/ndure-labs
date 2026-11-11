@@ -7,6 +7,7 @@ import { type Slot } from '../core/engine';
 import { fmt, when, cphDate, cphOffset } from '../core/time';
 import type { ConsentKey, Booking, Customer, Order, PreForm } from '../core/types';
 import { formKeys } from '../core/form';
+import { DEFAULT_CONFIG, noticeText } from '../core/config';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { MonthPicker } from './picker';
 import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, formLink } from '../core/visit';
@@ -327,7 +328,7 @@ function Account() {
 
           {mode && (
             <div className="scard" id="picker" style={{ scrollMarginTop: 96 }}>
-              <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Fri · at least 1 week ahead</span></div>
+              <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Fri{noticeText(DEFAULT_CONFIG) && ` · at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
               {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? (
                 <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">Email contact@ndure.dk and we find a time for you.</p></div>
               ) : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}

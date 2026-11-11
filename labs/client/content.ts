@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG, noticeText } from '../core/config';
 // Everything on the Labs page that the team may want to change without touching layout.
 // Leave a link empty ('') and the page hides that button or falls back to email.
 
@@ -32,7 +33,7 @@ export const RECOMMENDED = 3;
 export const PLAN_ORDER = [1, 3, 6];
 
 export const FLOW: [string, string][] = [
-  ['Book online', 'Pick your sessions and a date, at least 1 week ahead. Pay once.'],
+  ['Book online', `Pick your sessions and a date${noticeText(DEFAULT_CONFIG) ? `, at least ${noticeText(DEFAULT_CONFIG)} ahead` : ''}. Pay once.`],
   ['Get ready', 'You get a confirmation and calendar invite, and fill in a short form. Easy day before.'],
   ['Come to the lab', 'We pick you up at the DTU Science Park reception, Diplomvej 381, and set up the bike and the sensor.'],
   ['Ride the test', 'About an hour, a bit harder every few minutes. We measure your lactate.'],

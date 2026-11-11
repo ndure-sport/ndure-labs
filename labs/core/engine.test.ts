@@ -348,7 +348,7 @@ test('S1: pressing back and paying again still counts as new; a second payment e
 });
 
 test('riders book at least 1 week ahead; the team can book any time', () => {
-  const { labs } = setup(DEFAULT_CONFIG);
+  const { labs } = setup({ ...DEFAULT_CONFIG, minNoticeHours: 168 }) // the rule as it will be switched on again;
   const first = labs.slots()[0].start;
   assert.ok(Date.parse(first) >= Date.parse('2026-12-07T10:00:00+01:00'), 'nothing inside the first week');
   assert.equal(first, '2026-12-08T09:30:00+01:00');

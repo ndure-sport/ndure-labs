@@ -99,7 +99,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.locator('button.mday').first().waitFor({ timeout: 10000 }).catch(() => {});
   ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
   const firstDay = await page.locator('button.mday').first().getAttribute('aria-label');
-  ok('first bookable day is on or after 1 December', /December|January|February/.test(firstDay), firstDay);
+  ok('a first bookable day is shown (notice rule and opening date are off for testing)', !!firstDay, firstDay);
   ok('summary shows where to meet', (await page.locator('.sum').innerText()).includes('Diplomvej 381'));
   await page.locator('button.mday').nth(1).click();
   await page.locator('.tslot').first().click();

@@ -44,9 +44,11 @@ export const DEFAULT_CONFIG: Config = {
   maxQty: 6,
   validityMonths: 12,
   changeDeadlineHours: 24,
-  minNoticeHours: 168, // one week
+  // Switched off for testing. To turn the rules on again: minNoticeHours: 168 (one week) and
+  // opensOn: '2026-12-01'. The texts on the site follow these two settings by themselves.
+  minNoticeHours: 0,
   bookingWeeksAhead: 8,
-  opensOn: '2026-12-01', // the relaunch
+  opensOn: null,
   holdMinutes: 35,
   days: [2, 3, 4, 5],
   blocks: [
@@ -57,3 +59,10 @@ export const DEFAULT_CONFIG: Config = {
   loginCodeMinutes: 10,
   loginMaxAttempts: 5
 };
+
+// " · at least 1 week ahead" when the notice rule is on, otherwise nothing.
+export function noticeText(c: Config): string {
+  const h = c.minNoticeHours;
+  if (h < 24) return '';
+  return h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
+}

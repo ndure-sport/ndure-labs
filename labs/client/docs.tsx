@@ -1,6 +1,6 @@
 // Terms, privacy and the health check. FIRST VERSIONS: have them checked before launch.
 
-import { DEFAULT_CONFIG as CFG } from '../core/config';
+import { DEFAULT_CONFIG as CFG, noticeText } from '../core/config';
 import { CONTACT_EMAIL } from './content';
 import { Header, Footer, kr } from './shared';
 
@@ -33,7 +33,7 @@ export function Terms() {
       <p>Sessions are valid for {CFG.validityMonths} months from the day you pay. Sessions not used in that time expire.</p>
       <h2>Booking, changes and cancellation</h2>
       <ul>
-        <li>Sessions are booked at least 1 week ahead.</li>
+        {noticeText(CFG) && <li>Sessions are booked at least {noticeText(CFG)} ahead.</li>}
         <li>You can move or cancel a session for free until {CFG.changeDeadlineHours} hours before it starts, from your account. A cancelled session goes back into your account.</li>
         <li>Later than that, or if you do not show up, the session counts as used. Email us if something serious came up.</li>
         <li>If we have to cancel, you get the session back or your money back for it, your choice.</li>
