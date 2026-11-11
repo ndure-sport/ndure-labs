@@ -4,7 +4,7 @@
 
 import type { Config, Block } from './config';
 import { MEET, MEET_SHORT, PICKUP, PREP, BRING, PEDALS, SHOWERS, formLink } from './visit';
-import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact, ReportStatus } from './types';
+import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact, ReportStatus, PreForm } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
 export const CONSENT_VERSION = '2026-11-04';
@@ -411,6 +411,10 @@ export class Labs {
       .sort((a, b) => Date.parse(b.paidAt ?? b.createdAt) - Date.parse(a.paidAt ?? a.createdAt))[0];
     if (!parent) return null;
     const extra = this.db.orders.filter((o) => o.parentId === parent.id && o.status === 'paid');
+    // Only for a Snapshot (1 session), once that session is done: right after paying is too soon.
+    if (parent.qty !== 1 || extra.length > 0) return null;
+    const done = this.db.bookings.some((b) => b.orderId === parent.id && (b.status === 'attended' || (b.status !== 'cancelled' && Date.parse(b.end) <= now)));
+    if (!done) return null;
     const has = parent.qty + extra.reduce((n, o) => n + o.qty, 0);
     const paid = parent.total - (parent.partner ? this.config.partnerPrice : 0) + extra.reduce((n, o) => n + o.total, 0);
     const max = this.config.maxQty - has;
@@ -518,6 +522,7 @@ export class Labs {
       creditReturned: false
     };
     this.db.bookings.push(b);
+    this.attachLooseForm(b, c.email);
     order.remaining -= 1;
     if (withPartner) order.partnerUsed = true;
     const left = this.balance(customerId).total;
@@ -526,7 +531,7 @@ export class Labs {
       'confirmation',
       `confirm:${b.id}`,
       `Booked: ${when(b.start)}`,
-      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\nBefore your session, please fill in the pre session form (4 minutes), so we can set up your test: ${formLink(c, b)}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
+      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\n${b.form ? 'We already have your pre session form, thanks.' : `Before your session, please fill in the pre session form (4 minutes), so we can set up your test: ${formLink(c, b)}`}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
     );
     return b;
   }
@@ -643,6 +648,39 @@ export class Labs {
     };
     this.db.orders.push(o);
     return this.paid(o.id);
+  }
+
+  // ---------- pre session form (Tally) ----------
+  // A form comes in with the booking number from the link. If that is missing (someone opened the
+  // plain link), we use the email: the rider's next booked session. Otherwise it waits in
+  // looseForms and moves to their session once they book.
+  receiveForm(f: PreForm & { booking?: string | null }): 'booking' | 'email' | 'loose' | 'duplicate' {
+    const id = clean(f.id, 64);
+    if (!id) throw new LabsError('Form without an id.', 'form');
+    if (this.db.bookings.some((b) => b.form?.id === id) || this.db.looseForms.some((x) => x.id === id)) return 'duplicate';
+    const email = clean(f.email, 200).toLowerCase();
+    const form: PreForm = {
+      id, at: f.at || this.iso(), email, name: clean(f.name, 120),
+      answers: f.answers.slice(0, 80).map((x) => ({ q: clean(x.q, 300), a: clean(x.a, 2000) })).filter((x) => x.q && x.a),
+      files: f.files.slice(0, 10).filter((x) => /^https:\/\//.test(x.url)).map((x) => ({ name: clean(x.name, 200) || 'file', url: x.url.slice(0, 2000) }))
+    };
+    const byId = f.booking ? this.db.bookings.find((b) => b.id === clean(f.booking!, 40)) : undefined;
+    if (byId && (!byId.form || Date.parse(byId.form.at) <= Date.parse(form.at))) { byId.form = form; return 'booking'; }
+    const c = email ? this.db.customers.find((x) => x.email === email) : undefined;
+    const next = c && this.db.bookings
+      .filter((b) => b.customerId === c.id && b.status === 'booked' && Date.parse(b.end) > this.now())
+      .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))[0];
+    if (next) { next.form = form; return 'email'; }
+    this.db.looseForms = [...this.db.looseForms.filter((x) => x.email !== email || !email), form].slice(-50);
+    return 'loose';
+  }
+
+  // A form that came in before the rider had a session moves to their first new booking.
+  private attachLooseForm(b: Booking, email: string) {
+    const i = this.db.looseForms.findIndex((x) => x.email === email);
+    if (i < 0 || b.form) return;
+    b.form = this.db.looseForms[i];
+    this.db.looseForms.splice(i, 1);
   }
 
   refund(orderId: string): Order {
@@ -1085,7 +1123,7 @@ export class Labs {
           `We're looking forward to seeing you ${day} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}. We pick you up at the ${MEET_SHORT}.`,
           `For reliable results you can compare next time:\n${PREP.map((x) => `• ${x}`).join('\n')}`,
           `Please bring:\n${BRING.map((x) => `• ${x}`).join('\n')}\n${PEDALS} ${SHOWERS}`,
-          `Haven't filled in the pre session form yet? Please do it ${sameDay ? 'now' : 'today'}, it takes 4 minutes: ${formLink(c, b)}`,
+          ...(b.form ? [] : [`Haven't filled in the pre session form yet? Please do it ${sameDay ? 'now' : 'today'}, it takes 4 minutes: ${formLink(c, b)}`]),
           `If you feel ill, just reply to this email and we'll move your session.`,
           `See you ${day}!`
         ].join('\n\n'));

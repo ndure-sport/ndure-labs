@@ -8,6 +8,7 @@ import { change, read, readWithSize, Conflict, type Env, type State } from './st
 import { sign, verify, getCookie, cookie, sixDigits } from './auth';
 import { createCheckout, verifyStripe, paidCheckoutOrders } from './stripe';
 import { deliver, teamEmails, sendStaff, dailySummary, sessionToken } from './email';
+import { verifyTally, parseTally } from './tally';
 import { sessionIcs, renderEmail, AUTOMATIONS, TEAM_MAILS, maskCodes } from './mail';
 import { sampleEmails } from './samples';
 
@@ -106,7 +107,7 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
   const ip = req.headers.get('cf-connecting-ip') || '';
 
   // Basic protection against other sites posting to our API.
-  if (m === 'POST' && p !== '/api/stripe/webhook') {
+  if (m === 'POST' && p !== '/api/stripe/webhook' && p !== '/api/tally/webhook') {
     const origin = req.headers.get('origin');
     if (origin && origin !== url.origin) return fail('Not allowed.', 403);
   }
@@ -206,6 +207,23 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         if (s.db.orders.some((o) => o.id === orderId)) engine(s).checkoutExpired(orderId);
       });
     }
+    return new Response('ok');
+  }
+
+  // The pre session form: Tally posts every submission here.
+  if (m === 'POST' && p === '/api/tally/webhook') {
+    const raw = await req.text();
+    if (raw.length > 200_000) return new Response('too big', { status: 413 });
+    if (!(await verifyTally(env.TALLY_SIGNING_SECRET, raw, req.headers.get('tally-signature')))) return new Response('bad signature', { status: 401 });
+    let form: ReturnType<typeof parseTally> = null;
+    try { form = parseTally(JSON.parse(raw)); } catch { /* not JSON */ }
+    if (!form) return new Response('ignored');
+    const f = form;
+    await change(env, (s) => {
+      const e = engine(s);
+      const how = e.receiveForm(f);
+      if (how !== 'duplicate') e.audit('tally', 'form', `${f.email || 'no email'}, ${how}`);
+    });
     return new Response('ok');
   }
 
@@ -368,6 +386,8 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
         me,
         days: e.teamDays(),
         reports: e.reports(),
+        looseForms: s.db.looseForms.slice().reverse().map((x) => ({ id: x.id, at: x.at, email: x.email, name: x.name })),
+        formSetup: !!env.TALLY_SIGNING_SECRET,
         riders: e.customersOverview().map((c) => ({
           id: c.id, name: c.name, email: c.email, phone: c.phone, balance: c.balance.total,
           next: c.upcoming[0]?.start ?? null, last: c.past[0]?.start ?? null,
@@ -477,10 +497,6 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
           case 'book': {
             const bk = e.book(clean(b.customerId, 40), start, { by: 'team' });
             return e.audit(me, 'book', who(bk.id));
-          }
-          case 'refund': {
-            const o = e.refund(clean(b.orderId, 40));
-            return e.audit(me, 'close order', `${o.id}, ${st.db.customers.find((c) => c.id === o.customerId)?.email}, ${e.money(o.total)}`);
           }
           case 'close': {
             const from = clean(b.from ?? b.date, 10), to = clean(b.to ?? b.from ?? b.date, 10);
@@ -654,6 +670,6 @@ export default {
 // The rider's account, with a private calendar file link per upcoming session.
 async function accountView(s: Awaited<ReturnType<typeof read>>, cid: string, appUrl: string) {
   const a = engine(s).account(cid);
-  const upcoming = await Promise.all(a.upcoming.map(async (b) => ({ ...b, icsUrl: `${appUrl}/calendar/session/${b.id}/${await sessionToken(s.secrets.feed, b.id)}.ics` })));
-  return { ...a, upcoming };
+  const upcoming = await Promise.all(a.upcoming.map(async ({ form, ...b }) => ({ ...b, formDone: !!form, icsUrl: `${appUrl}/calendar/session/${b.id}/${await sessionToken(s.secrets.feed, b.id)}.ics` })));
+  return { ...a, upcoming, past: a.past.map(({ form: _f, ...b }) => b) };
 }

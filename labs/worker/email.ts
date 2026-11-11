@@ -9,6 +9,7 @@
 // claiming, the claim runs out and the email is picked up again.
 
 import { change, read, type Env } from './store';
+import { formLine } from '../core/form';
 import type { Email, Booking, Customer } from '../core/types';
 import { Labs } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
@@ -175,10 +176,11 @@ export function dailySummary(todays: ReturnType<Labs['teamDays']>[number]['list'
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' });
   const lines = todays.map((r) => {
     const partner = r.withPartner ? ` + ${r.partnerName}${r.order.partnerConsents ? '' : ' (partner consent missing)'}` : '';
-    return `${fmtTime(r.start)}  ${r.customer.name}${partner}, ${r.customer.phone ?? 'no phone'}${r.customer.ftp ? `, FTP ${r.customer.ftp}` : ''}${r.customer.goal ? `, ${r.customer.goal}` : ''}${r.customer.consents?.items.health ? '' : '  (consent missing)'}`;
+    const form = r.form ? `Form ✓  ${formLine(r.form)}` : 'FORM MISSING: text them before the session';
+    return `${fmtTime(r.start)}  ${r.customer.name}${partner}, ${r.customer.phone ?? 'no phone'}${r.customer.consents?.items.health ? '' : '  (consent missing)'}\n       ${form}`;
   });
   return {
     subject: `Today at Labs: ${todays.reduce((n, r) => n + r.seats, 0)} riders`,
-    text: `Sessions today, ${when(todays[0].start).split(',')[0]}:\n\n${lines.join('\n')}`
+    text: `Sessions today, ${when(todays[0].start).split(',')[0]}:\n\n${lines.join('\n\n')}\n\nFull answers: team page, Sessions, Show form answers.`
   };
 }

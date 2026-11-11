@@ -1,11 +1,12 @@
 // Pages for book.ndure.dk: the Labs page with booking (/), rider account (/account), team (/team),
 // partner consent (/consent/...) and the terms, privacy and health check pages.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Slot } from '../core/engine';
 import { fmt, when, cphDate, cphOffset } from '../core/time';
-import type { ConsentKey, Booking, Customer, Order } from '../core/types';
+import type { ConsentKey, Booking, Customer, Order, PreForm } from '../core/types';
+import { formKeys } from '../core/form';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { MonthPicker } from './picker';
 import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, formLink } from '../core/visit';
@@ -138,7 +139,7 @@ function AfterPayment({ orderId, onLoggedIn }: { orderId: string; onLoggedIn: ()
 }
 
 // ---------------- rider account ----------------
-type Upcoming = Booking & { changeable: boolean; icsUrl: string };
+type Upcoming = Booking & { changeable: boolean; icsUrl: string; formDone?: boolean };
 type TopUp = { parentId: string; has: number; max: number; expiresAt: string; options: { n: number; price: number; unit: number }[] } | null;
 type AccountData = {
   customer: Customer;
@@ -186,7 +187,9 @@ function SessionCard({ b, c, busy, onMove, onCancel, confirming, onConfirm, onKe
         <dt>Bring</dt><dd>{BRING_SENTENCE}<br /><span className="muted small">{PEDALS}</span></dd>
         <dt>Prep</dt><dd>{PREP.join(' ')}<br /><span className="muted small">{SHOWERS}</span></dd>
       </dl>
-      <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so we can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>
+      {b.formDone
+        ? <div className="formbox done"><span>✓ We have your pre session form. Thanks!</span></div>
+        : <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so we can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>}
       <CalendarLinks b={b} />
       <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
     </div>
@@ -353,7 +356,7 @@ function Account() {
           {a.balance.total > 0 ? (
             <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>
           ) : (
-            <a className="btn full" href="/#book">Buy sessions</a>
+            <a className="btn full" href="/book">Buy sessions</a>
           )}
           {a.topUp && <><hr className="sep" /><AddSessions t={a.topUp} busy={busy} onBuy={buy} /></>}
         </aside>
@@ -428,6 +431,30 @@ function TimeChip({ iso, label, dim = false }: { iso: string; label: string; dim
   return <span className={`tchip ${label === 'Morning' ? 'am' : 'pm'}${dim ? ' dim' : ''}`}><b>{time(iso)}</b><small>{label}</small></span>;
 }
 
+// The rider's pre session form, under their row: the setup numbers first, then every answer.
+function FormAnswers({ f }: { f: PreForm }) {
+  const k = formKeys(f);
+  const tiles = [
+    ['Estimated FTP', k.ftp ? `${k.ftp} W` : '', ''],
+    ['Bike', k.bike, ''],
+    ['Cleats', k.cleats, /spd-sl/i.test(k.cleats) ? 'Uses our pedals' : k.cleats ? 'Bring own pedals' : ''],
+    ['Saddle height', k.saddle ? `${k.saddle} mm` : '', k.reach]
+  ].filter(([, v]) => v);
+  const skip = /^(full name|email|phone|estimated ftp|do you want to bring your own bike|which cleats|saddle height|handlebar reach)/i;
+  const rest = f.answers.filter((x) => !skip.test(x.q));
+  return (
+    <div className="fpanel">
+      <div className="row spread"><b>For the setup</b><span className="small muted">Form sent {fmt(f.at, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
+      {tiles.length > 0 && <div className="ftiles">{tiles.map(([q, v, s]) => <div key={q}><span>{q}</span><b>{v}</b>{s && <small>{s}</small>}</div>)}</div>}
+      <dl className="fanswers">{rest.map((x, i) => <div key={i}><dt>{x.q}</dt><dd>{x.a}</dd></div>)}</dl>
+      <div className="row small">
+        {f.files.map((x) => <a key={x.url} href={x.url} target="_blank" rel="noopener noreferrer">{x.name}</a>)}
+        <a href="https://tally.so/forms/peyDxB/submissions" target="_blank" rel="noopener noreferrer"><b>All submissions in Tally →</b></a>
+      </div>
+    </div>
+  );
+}
+
 function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () => void }) {
   const [cancel, setCancel] = useState<string | null>(null);
   const [move, setMove] = useState<TeamRow | null>(null);
@@ -435,11 +462,16 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
   const [pick, setPick] = useState<string | null>(null);
   const [bookAt, setBookAt] = useState<string | null>(null);
   const [rider, setRider] = useState('');
+  const [open, setOpen] = useState<string | null>(null); // whose form answers are shown
+  const [slotErr, setSlotErr] = useState<string | null>(null);
   useEffect(() => {
     if (!move) return;
     setSlots(null);
     setPick(null);
-    api<{ slots: Slot[] }>(`/api/team/slots?booking=${move.id}`).then((d) => setSlots(d.slots));
+    setSlotErr(null);
+    api<{ slots: Slot[] }>(`/api/team/slots?booking=${move.id}`).then((d) => setSlots(d.slots), (e) => setSlotErr((e as Error).message || 'Could not load the free times.'));
+    // The calendar opens right under the rider's row.
+    setTimeout(() => document.getElementById(`move-${move.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
   }, [move]);
   const run = async (payload: object, ok: string) => { if (await act(payload, ok)) { setCancel(null); setMove(null); setBookAt(null); setRider(''); } };
   const now = Date.now();
@@ -474,7 +506,14 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
           <button className="ghost" onClick={() => api('/api/team/logout-all', {}).then(onLogout)}>Log out on all devices</button>
         </span>
       </div>
-      <div className="skey"><span className="tchip am"><b>09:30</b><small>Morning</small></span><span className="tchip pm"><b>13:00</b><small>Afternoon</small></span><span className="pill ok">Health ok</span><span className="pill bad">Consent missing</span><span>On the day: mark who came. Before the day: move or cancel.</span></div>
+      {!t.formSetup && <div className="msg err small">The pre session form is not linked yet: add TALLY_SIGNING_SECRET in Cloudflare and the webhook in Tally. Until then answers are only in Tally.</div>}
+      {t.looseForms.length > 0 && (
+        <div className="loose">
+          <span><b>{t.looseForms.length === 1 ? '1 form' : `${t.looseForms.length} forms`} without a session:</b> {t.looseForms.slice(0, 3).map((f) => `${f.name || f.email}${f.name && f.email ? `, ${f.email}` : ''}, sent ${fmt(f.at, { day: 'numeric', month: 'short' })}`).join(' · ')}. It moves to their session once they book.</span>
+          <a href="https://tally.so/forms/peyDxB/submissions" target="_blank" rel="noopener noreferrer">View in Tally →</a>
+        </div>
+      )}
+      <div className="skey"><span className="tchip am"><b>09:30</b><small>Morning</small></span><span className="tchip pm"><b>13:00</b><small>Afternoon</small></span><span className="pill ok">Health ok</span><span className="pill bad">Consent missing</span><span className="pill form">Form ✓</span><span className="pill fmiss">Form missing</span><span>On the day: mark who came. Before the day: move or cancel.</span></div>
       {t.days.length === 0 && <p className="muted">Nothing booked yet.</p>}
       {t.days.length > 0 && <div className="srow shead"><span>Session</span><span>Rider</span><span>Contact</span><span>Status</span><span style={{ textAlign: 'right' }}>Actions</span></div>}
       {t.days.map(({ date, list }) => {
@@ -518,15 +557,22 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
               const started = Date.parse(r.start) <= now;
               const cs = r.customer.consents?.items;
               const partnerOk = !r.withPartner || !!r.order.partnerConsents?.items.health;
+              const keys = r.form ? formKeys(r.form) : null;
+              const sub = keys ? [keys.ftp && `${keys.ftp} W`, keys.bike].filter(Boolean).join(' · ') : [r.customer.ftp ? `${r.customer.ftp} W` : '', r.customer.goal ?? ''].filter(Boolean).join(' · ');
               return (
-                <div key={r.id} className="srow">
+                <Fragment key={r.id}>
+                <div className="srow">
                   <TimeChip iso={r.start} label={r.label} />
-                  <span className="scell"><b>{r.customer.name}</b>{r.withPartner && <span className="small">+ {r.partnerName}</span>}{(r.customer.ftp || r.customer.goal) && <span className="small muted">{[r.customer.ftp ? `${r.customer.ftp} W` : '', r.customer.goal ?? ''].filter(Boolean).join(' · ')}</span>}</span>
+                  <span className="scell"><b>{r.customer.name}</b>{r.withPartner && <span className="small">+ {r.partnerName}</span>}
+                    {sub ? <span className="small muted">{sub}</span> : !r.form && <span className="small due-t">No form yet</span>}
+                    {r.form && <button type="button" className="linkbtn" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>{open === r.id ? 'Hide form answers ▴' : 'Show form answers ▾'}</button>}
+                  </span>
                   <span className="scell small">{r.customer.phone ? <a href={`tel:${r.customer.phone.replace(/\s/g, '')}`}>{r.customer.phone}</a> : <span className="muted">No phone</span>}<a className="muted ell" href={`mailto:${r.customer.email}`}>{r.customer.email}</a></span>
                   <span className="pills">
                     {r.status === 'attended' && <span className="pill ok">Came</span>}
                     {r.status === 'attended' && <span className={`pill ${REPORT_PILL[r.report ?? 'todo']}`}>{REPORT_LABEL[r.report ?? 'todo']}</span>}
                     {r.status === 'no_show' && <span className="pill bad">No show</span>}
+                    {r.form ? <span className="pill form">Form ✓</span> : r.status === 'booked' && <span className="pill fmiss">Form missing</span>}
                     {cs?.health && partnerOk ? <span className="pill ok">Health ok</span> : <span className="pill bad">Consent missing</span>}
                     {cs?.film && <span className="pill fine">Film ok</span>}
                   </span>
@@ -548,22 +594,24 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
                     </>))}
                   </span>
                 </div>
+                {open === r.id && r.form && <FormAnswers f={r.form} />}
+                {move?.id === r.id && (
+                  <div className="scard inrow" id={`move-${r.id}`} style={{ scrollMarginTop: 96 }}>
+                    <h3 style={{ margin: 0 }}>Move {r.customer.name} from {when(r.start)}</h3>
+                    {slotErr ? <p className="msg err">{slotErr} Close and try again, or reload the page.</p> : !slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? <p className="muted">No free sessions in the coming weeks.</p> : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
+                    <div className="row">
+                      <button className="primary" disabled={!pick} onClick={() => run({ action: 'move', bookingId: r.id, start: pick }, 'Moved. The rider got an email.')}>{pick ? `Move to ${when(pick)}` : 'Pick a time'}</button>
+                      <button onClick={() => setMove(null)}>Close</button>
+                    </div>
+                  </div>
+                )}
+                </Fragment>
               );
             })}
           </div>
         );
       })}
-      <p className="small muted" style={{ margin: 0 }}>Move date: pick a new time, the rider gets an email and a calendar update. Cancel booking: you choose if the session goes back on their account. Came and No show appear once the session has started.</p>
-      {move && (
-        <div className="scard">
-          <h3 style={{ margin: 0 }}>Move {move.customer.name} from {when(move.start)}</h3>
-          {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? <p className="muted">No free sessions in the coming weeks.</p> : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
-          <div className="row">
-            <button className="primary" disabled={!pick} onClick={() => run({ action: 'move', bookingId: move.id, start: pick }, 'Moved. The rider got an email.')}>{pick ? `Move to ${when(pick)}` : 'Pick a time'}</button>
-            <button onClick={() => setMove(null)}>Close</button>
-          </div>
-        </div>
-      )}
+      <p className="small muted" style={{ margin: 0 }}>Move date: pick a new time, the rider gets an email and a calendar update. Cancel booking: you choose if the session goes back on their account. Came and No show appear once the session has started. Form missing: the rider gets a nudge in the day before email; text them if it is still missing.</p>
     </section>
   );
 }
@@ -583,6 +631,8 @@ type TeamData = {
   opening: OpeningData;
   emails: { paused: { at: string; count: number } | null };
   reports: { open: ReportRow[]; sent: ReportRow[] };
+  looseForms: { id: string; at: string; email: string; name: string }[];
+  formSetup: boolean;
 };
 
 function Team() {
@@ -655,14 +705,14 @@ function Team() {
         <h2>Riders</h2>
         <div className="scroll">
           <table className="team">
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Sessions left</th><th>Next</th><th>Last</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Source</th><th>Sessions left</th><th>Next</th><th>Last</th></tr></thead>
             <tbody>
               {t.riders.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name}</td><td>{c.email}</td><td>{c.phone}</td><td className="muted">{c.src}</td><td>{c.balance}</td>
                   <td>{c.next ? when(c.next) : <span className="muted">none</span>}</td>
                   <td>{c.last ? when(c.last) : ''}</td>
-                  <td className="actions">{c.lastPaidOrder && <button onClick={() => act({ action: 'refund', orderId: c.lastPaidOrder }, 'Order closed. Now refund the money in Stripe.')}>Close last order</button>}</td>
+                  
                 </tr>
               ))}
             </tbody>

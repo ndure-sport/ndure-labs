@@ -68,7 +68,10 @@ export type Booking = {
   reportNote?: string | null;
   reportLink?: string | null;
   reportAt?: string | null; // when it was marked as sent
+  form?: PreForm | null; // the pre session form, from Tally
 };
+// One pre session form submission, as Tally sent it: every answered question with its answer.
+export type PreForm = { id: string; at: string; email: string; name: string; answers: { q: string; a: string }[]; files: { name: string; url: string }[] };
 export type ReportStatus = 'todo' | 'sent' | 'redo';
 
 // Someone who might book: met at an event, asked for a call, wrote on Instagram.
@@ -142,11 +145,12 @@ export type Db = {
   emailOff: string[]; // automatic emails the team switched off (templates)
   autoPaused: { at: string; count: number; keys: string[] } | null; // safety stop: all automatic emails paused after an unusual burst
   burstOkUntil?: string; // the team said "send them anyway": no safety stop until then
+  looseForms: PreForm[]; // forms we could not match to a session yet (newest last, at most 50)
 };
 
 export const emptyDb = (): Db => ({
   seq: 0, customers: [], orders: [], bookings: [], holds: [], emails: [], codes: [], closed: [],
-  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: [], hours: null, emailOff: [], autoPaused: null
+  done: [], alerts: [], audit: [], fails: [], teamSv: {}, leads: [], contacts: [], hours: null, emailOff: [], autoPaused: null, looseForms: []
 });
 
 // Fills in fields added after the data was first saved.

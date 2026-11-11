@@ -25,6 +25,19 @@ async function webhook(orderId) {
   const sig = crypto.createHmac('sha256', 'whsec_localtest').update(`${t}.${body}`).digest('hex');
   return (await fetch(BASE + '/api/stripe/webhook', { method: 'POST', body, headers: { 'stripe-signature': `t=${t},v1=${sig}` } })).status;
 }
+// A pre session form from Tally, signed like Tally does (base64 HMAC SHA256). The local app runs with TALLY_SIGNING_SECRET=sekret.
+async function tallyHook(email, secret = 'sekret') {
+  const { createHmac } = await import('node:crypto');
+  const raw = JSON.stringify({ eventId: 'ev' + Date.now(), eventType: 'FORM_RESPONSE', data: { responseId: 'resp' + Date.now(), createdAt: new Date().toISOString(), fields: [
+    { key: 'h', label: 'email', type: 'HIDDEN_FIELDS', value: email },
+    { key: 'a', label: 'Estimated FTP (watts)', type: 'INPUT_NUMBER', value: 271 },
+    { key: 'b', label: 'Do you want to bring your own bike?', type: 'MULTIPLE_CHOICE', value: ['n'], options: [{ id: 'n', text: 'No, I ride your lab bike' }] },
+    { key: 'c', label: 'Primary sport', type: 'MULTIPLE_CHOICE', value: ['t'], options: [{ id: 't', text: 'Triathlon' }] }
+  ] } });
+  const sig = createHmac('sha256', secret).update(raw).digest('base64');
+  const r = await fetch(`${BASE}/api/tally/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'tally-signature': sig }, body: raw });
+  return r.status;
+}
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true }); };
 
 const browser = await chromium.launch();
@@ -133,7 +146,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('session card shows where and what to bring', (await page.locator('.scard').first().innerText()).includes('Diplomvej 381') && (await page.locator('.scard').first().innerText()).includes('sleeveless top'));
   ok('pre session form link with the rider filled in', /^https:\/\/tally\.so\/r\/peyDxB\?.*email=browser/.test(await page.locator('.formbox a').getAttribute('href')));
   ok('add to calendar links', (await page.locator('.cal-links a').count()) === 3);
-  ok('add sessions at the pack price: 1 more is 435 kr', (await page.getByRole('button', { name: /^Add 1 session, pay/ }).innerText()) === 'Add 1 session, pay 435 kr');
+  ok('no Add sessions on a Progress pack (only after a Snapshot)', (await page.getByRole('button', { name: /^Add \d session/ }).count()) === 0);
 
   // Book a second session from the account.
   await page.getByRole('button', { name: 'Book a session' }).click();
@@ -144,18 +157,6 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.getByText('Booked. A confirmation is on its way.').waitFor({ timeout: 10000 }).catch(() => {});
   ok('second session booked from the account, 1 left', (await page.locator('.bignum').innerText()) === '1');
 
-  // Add 2 sessions: Stripe, then they are in the account.
-  stripeUrl = null;
-  await page.locator('.stp[aria-label="One more"]').click();
-  ok('2 more is 870 kr', (await page.getByRole('button', { name: /^Add 2 sessions/ }).innerText()) === 'Add 2 sessions, pay 870 kr');
-  await page.getByRole('button', { name: /^Add 2 sessions/ }).click();
-  await page.waitForURL('https://checkout.stripe.test/**', { timeout: 15000 }).catch(() => {});
-  const addId = stripeUrl?.split('/').pop();
-  ok('add sessions goes to Stripe', !!addId);
-  ok('extra sessions paid', (await webhook(addId)) === 200);
-  await page.goto(`${BASE}/account?paid=${addId}`, { waitUntil: 'networkidle' });
-  await page.getByText('Hi Browser').waitFor({ timeout: 15000 }).catch(() => {});
-  ok('3 sessions left after adding 2', (await page.locator('.bignum').innerText()) === '3');
 
   // Log out and in again with the emailed code.
   await page.getByRole('button', { name: 'Log out', exact: true }).click();
@@ -188,6 +189,8 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     if (await page.getByText('Too many codes requested').isVisible()) {
       console.log('SKIP  team page: too many login codes for team@ndure.dk in the last hour (from earlier runs)');
     } else {
+    ok('Tally webhook with a wrong signature is refused', (await tallyHook(email, 'wrong')) === 401);
+    ok('Tally webhook with the right signature is stored', (await tallyHook(email)) === 200);
     const tcode = lastEmail('team@ndure.dk')?.subject.match(/\d{6}/)?.[0];
     await page.getByLabel('Code').fill(tcode || '');
     await page.getByRole('button', { name: 'Log in' }).click();
@@ -195,6 +198,15 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     ok('team tabs: Sessions, Opening hours, Admin', (await page.locator('nav.tabs button').allInnerTexts()).join('|') === 'Sessions|Opening hours|Admin', (await page.locator('nav.tabs button').allInnerTexts()).join('|'));
     ok('team list shows the rider with Move date', (await page.locator('.srow', { hasText: 'Browser Rider' }).count()) >= 1 && (await page.getByRole('button', { name: '↔ Move date' }).count()) >= 1);
     ok('free spots can be booked', (await page.getByRole('button', { name: '+ Book a rider' }).count()) >= 1);
+    const row = page.locator('.srow', { hasText: email }).first();
+    ok('rider row shows Form ✓', (await row.locator('.pill.form').count()) === 1);
+    await row.getByRole('button', { name: /Show form answers/ }).click();
+    ok('form answers open under the row with the setup tiles', (await page.locator('.fpanel').innerText()).includes('271 W') && (await page.locator('.fpanel').innerText()).includes('Triathlon'));
+    await shot(page, `${label}-7-team-form`);
+    await row.getByRole('button', { name: '↔ Move date' }).click();
+    await page.locator('.scard.inrow .mday').first().waitFor({ timeout: 10000 }).catch(() => {});
+    ok('Move date opens the calendar under the row', (await page.locator('.scard.inrow .mday').count()) > 0 && await page.locator('.scard.inrow').isVisible());
+    await shot(page, `${label}-8-team-move`);
     await shot(page, `${label}-6-team`);
     }
   }

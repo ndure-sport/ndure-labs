@@ -378,11 +378,13 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
   const summary = (
     <aside className="side panel sum" aria-label="Your booking">
       <p style={{ margin: 0, fontWeight: 600, fontSize: 17 }}>Your booking</p>
-      <div className="ln"><span>Sessions</span><span>{info.tier}, {qty}</span></div>
-      <div className="ln"><span>{qty > 1 ? 'First session' : 'Session'}</span><span style={{ textAlign: 'right' }}>{start ? when(start) : 'Not chosen yet'}</span></div>
+      <div className="sumqty"><b>{qty}</b><span><b>{qty === 1 ? 'lab session' : 'lab sessions'}</b><small>{info.tier} pack · {qty === 1 ? '1 test, 1 report' : `${qty} tests, ${qty} reports`}</small></span></div>
+      <div className="ln"><span>{qty > 1 ? 'Session 1' : 'Session'}</span><span style={{ textAlign: 'right' }}>{start ? when(start) : 'Not chosen yet'}</span></div>
+      {qty > 1 && <div className="ln"><span style={{ whiteSpace: 'nowrap' }}>{qty === 2 ? 'Session 2' : `Sessions 2 to ${qty}`}</span><span style={{ textAlign: 'right' }}>Book later in your account</span></div>}
       <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>DTU Science Park reception<br />Diplomvej 381, Kongens Lyngby</span></div>
-      <div className="ln"><span>Per session</span><span>{q.saving > 0 && <s style={{ color: '#999', marginRight: 6 }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
-      <div className="ln tot"><span style={{ color: '#000' }}>Total</span><span>{kr(q.total)}</span></div>
+      <div className="ln"><span>Price</span><span>{qty > 1 && `${qty} × `}{q.saving > 0 && <s style={{ color: '#999', margin: '0 4px' }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
+      <div className="ln tot"><span style={{ color: '#000' }}>{qty > 1 ? `Total for ${qty} sessions` : 'Total'}</span><span>{kr(q.total)}</span></div>
+      {q.saving > 0 && <p className="small" style={{ margin: '-4px 0 0', color: 'var(--blue)', fontWeight: 600, textAlign: 'right' }}>You save {kr(q.saving)}</p>}
       {(() => {
         const up = PACKS.find((n) => n > qty);
         if (!up) return null;

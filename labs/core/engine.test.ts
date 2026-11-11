@@ -498,11 +498,14 @@ test('emails: more than 40 automatic emails in one run pauses them all and alert
   assert.ok(labs.db.emails.some((e) => e.template === 'confirmation'));
 });
 
-test('adding sessions: pay the difference to the bigger pack, expire with the pack', () => {
-  const { labs } = setup();
-  const snap = labs.checkout(rider('s@x.dk', { qty: 1, start: labs.slots()[0].start }));
+test('adding sessions: only for a Snapshot, after that session; pay the difference, expire with the pack', () => {
+  const { labs, tick } = setup();
+  const start = labs.slots()[0].start;
+  const snap = labs.checkout(rider('s@x.dk', { qty: 1, start }));
   labs.paid(snap.id);
   const c = snap.customerId;
+  assert.equal(labs.topUpOffer(c), null, 'not right after paying');
+  tick(days(30)); // well after the session
   const offer = labs.topUpOffer(c)!;
   assert.equal(offer.has, 1);
   assert.equal(offer.max, 5);
@@ -517,13 +520,11 @@ test('adding sessions: pay the difference to the bigger pack, expire with the pa
   labs.paid(add.id);
   assert.equal(labs.balance(c).total, 2);
   assert.equal(labs.order(add.id).expiresAt, labs.order(snap.id).expiresAt);
-  // Now 3 bought for 1,305: one more costs 435, like a 4 session pack at the Progress price.
-  assert.equal(labs.topUpOffer(c)!.options[0].price, 435);
-  assert.equal(labs.topUpOffer(c)!.has, 3);
-  // A full Season pack can't add more.
-  const s = labs.checkout(rider('season@x.dk', { qty: 6, later: true }));
-  labs.paid(s.id);
-  assert.equal(labs.topUpOffer(s.customerId), null);
+  assert.equal(labs.topUpOffer(c), null, 'one upgrade, then the account shows Book a session');
+  // Progress and Season packs never see it.
+  const p = labs.checkout(rider('p@x.dk', { qty: 3, later: true }));
+  labs.paid(p.id);
+  assert.equal(labs.topUpOffer(p.customerId), null);
   // Free sessions from the team are not a pack to add to.
   const g = labs.giveSessions({ email: 'gift@x.dk', name: 'Gift', qty: 1 });
   assert.equal(labs.topUpOffer(g.customerId), null);
@@ -599,4 +600,81 @@ test('emails: confirmation and day before emails render the visit info, form box
   assert.ok(rh.includes('email=a%40x.dk'), 'form link prefilled');
   assert.ok(!rh.includes('>Directions</a>'), 'no separate Directions button');
   if (process.env.WRITE_MAIL) { const fs = await import('node:fs'); fs.writeFileSync(`${process.env.WRITE_MAIL}/confirmation.html`, ch); fs.writeFileSync(`${process.env.WRITE_MAIL}/reminder.html`, rh); }
+});
+
+test('pre session form: matched by booking number, then email, else waits until they book', async () => {
+  const { parseTally, verifyTally } = await import('../worker/tally.ts');
+  const { formKeys, formLine } = await import('./form.ts');
+  const { labs } = setup();
+  const o = labs.checkout(rider('a@x.dk', { qty: 3, later: true, name: 'Mette Jensen' }));
+  labs.paid(o.id);
+  const c = labs.customerByEmail('a@x.dk')!;
+  const slots = labs.slots();
+  const b1 = labs.book(c.id, slots[6].start, { by: 'rider' });
+  // The shape Tally sends (FORM_RESPONSE), with hidden fields from our link.
+  const payload = (id: string, booking: string | null, email = 'a@x.dk') => ({
+    eventId: 'e' + id, eventType: 'FORM_RESPONSE', createdAt: '2026-11-29T19:14:00Z',
+    data: { responseId: id, createdAt: '2026-11-29T19:14:00Z', fields: [
+      { key: 'h1', label: 'email', type: 'HIDDEN_FIELDS', value: email },
+      { key: 'h2', label: 'booking', type: 'HIDDEN_FIELDS', value: booking },
+      { key: 'q1', label: 'Full name', type: 'INPUT_TEXT', value: 'Mette Jensen' },
+      { key: 'q2', label: 'Estimated FTP (watts)', type: 'INPUT_NUMBER', value: 265 },
+      { key: 'q3', label: 'Do you want to bring your own bike?', type: 'MULTIPLE_CHOICE', value: ['o2'], options: [{ id: 'o1', text: 'No, I ride your lab bike' }, { id: 'o2', text: 'Yes, I bring my own bike' }] },
+      { key: 'q4', label: 'Which cleats do you use?', type: 'MULTIPLE_CHOICE', value: ['c1'], options: [{ id: 'c1', text: 'Shimano SPD-SL' }] },
+      { key: 'q5', label: 'Which platforms do you use?', type: 'CHECKBOXES', value: ['p1', 'p2'], options: [{ id: 'p1', text: 'Garmin' }, { id: 'p2', text: 'Zwift' }] },
+      { key: 'q5_p1', label: 'Which platforms do you use? (Garmin)', type: 'CHECKBOXES', value: true },
+      { key: 'q6', label: 'Saddle height (mm)', type: 'INPUT_NUMBER', value: null },
+      { key: 'q7', label: 'Attach here (optional)', type: 'FILE_UPLOAD', value: [{ name: 'test.pdf', url: 'https://storage.tally.so/x/test.pdf' }] }
+    ] }
+  });
+  const f = parseTally(payload('r1', b1.id))!;
+  assert.equal(f.booking, b1.id);
+  assert.deepEqual(f.answers.find((x) => x.q.startsWith('Which platforms'))!.a, 'Garmin, Zwift');
+  assert.ok(!f.answers.some((x) => x.q.includes('(Garmin)')), 'checkbox helper fields skipped');
+  assert.ok(!f.answers.some((x) => x.q.startsWith('Saddle')), 'unanswered skipped');
+  assert.equal(f.files[0].name, 'test.pdf');
+  assert.equal(labs.receiveForm(f), 'booking');
+  assert.equal(labs.receiveForm(f), 'duplicate', 'Tally retries do nothing');
+  const k = formKeys(labs.db.bookings.find((x) => x.id === b1.id)!.form!);
+  assert.equal(k.ftp, '265');
+  assert.equal(k.bike, 'Own bike');
+  assert.equal(formLine(labs.db.bookings.find((x) => x.id === b1.id)!.form!), 'FTP 265 W · OWN BIKE, Shimano SPD-SL');
+  // Moving the session keeps the form.
+  labs.reschedule(b1.id, slots[8].start, 'team');
+  assert.ok(labs.db.bookings.find((x) => x.id === b1.id)!.form);
+  // No booking number: goes to their next booked session by email.
+  labs.cancel(b1.id, 'team');
+  const b2 = labs.book(c.id, slots[10].start, { by: 'rider' });
+  assert.equal(labs.receiveForm(parseTally(payload('r2', null))!), 'email');
+  assert.equal(labs.db.bookings.find((x) => x.id === b2.id)!.form!.id, 'r2');
+  // Somebody without a session: waits, then moves to their first booking.
+  assert.equal(labs.receiveForm(parseTally(payload('r3', null, 'new@x.dk'))!), 'loose');
+  assert.equal(labs.db.looseForms.length, 1);
+  const n = labs.checkout(rider('new@x.dk', { qty: 1, start: slots[12].start }));
+  labs.paid(n.id);
+  const nb = labs.db.bookings.find((x) => x.customerId === n.customerId)!;
+  assert.equal(nb.form?.id, 'r3');
+  assert.equal(labs.db.looseForms.length, 0);
+  assert.ok(labs.db.emails.find((e) => e.key === `confirm:${nb.id}`)!.body.includes('We already have your pre session form'));
+  // The day before email leaves out the form box when the form is in.
+  // Signature: base64 HMAC SHA256 of the raw body with the signing secret.
+  const raw = JSON.stringify(payload('r9', null));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('sekret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(raw)))));
+  assert.equal(await verifyTally('sekret', raw, sig), true);
+  assert.equal(await verifyTally('sekret', raw + ' ', sig), false);
+  assert.equal(await verifyTally(undefined, raw, sig), false, 'no secret set: nothing accepted');
+});
+
+test('reminder: no form box when the form is already in', () => {
+  const { labs, tick } = setup();
+  const o = labs.checkout(rider('a@x.dk', { qty: 3, later: true }));
+  labs.paid(o.id);
+  const c = labs.customerByEmail('a@x.dk')!;
+  const b = labs.book(c.id, '2026-12-04T09:30:00+01:00', { by: 'rider' });
+  labs.receiveForm({ id: 'f1', at: '2026-12-01T10:00:00Z', email: 'a@x.dk', name: 'A', answers: [{ q: 'Estimated FTP (watts)', a: '250' }], files: [], booking: b.id });
+  tick(days(2) + hours(22));
+  const rem = labs.db.emails.find((e) => e.template === 'reminder')!;
+  assert.ok(!rem.body.includes('tally.so'), 'no form link');
+  assert.ok(rem.body.includes('Please bring'));
 });

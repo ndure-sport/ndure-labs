@@ -87,7 +87,8 @@ your NDURE Labs session tomorrow" ("today" if the booking was made less than a d
 >
 > Showers are available after your session.
 >
-> [blue box] Haven't filled in the pre session form yet? Please do it today (4 minutes). [Fill in the pre session form]
+> [blue box] Haven't filled in the pre session form yet? Please do it today, it takes 4 minutes. [Fill in the pre session form]
+> (left out when the form is already in)
 >
 > If you feel ill, just reply to this email and we'll move your session.
 >
@@ -106,7 +107,17 @@ Sent to everyone in `TEAM_EMAILS` (set in Cloudflare).
 
 | Email | When |
 |---|---|
-| Today at Labs | Every opening day at 07:00: the day's riders with phone (FTP and goal only for riders who gave them before; new riders give them in the pre session form) |
+| Today at Labs | Every opening day at 07:00: the day's riders with phone, and per rider "Form ✓" with FTP, bike, cleats and saddle height, or "FORM MISSING" |
 | Booking soon | A booking, move or cancel for a session in the next 48 hours |
 | Alert | Late payments, emails failing, automatic emails paused |
 | Calendar invite | Every booking, move and cancel, only if `TEAM_CALENDAR_EMAIL` is set |
+
+## Pre session form (Tally)
+
+Tally sends each submission to `/api/tally/webhook`. The booking number in the form link says which session it belongs to;
+without it, the rider's email picks their next booked session. If they have nothing booked, it waits ("forms without a
+session" on the team page) and moves to their first new booking. Moving a session keeps its form.
+
+Setup, once: in Tally open the form, Integrations, Webhooks, add `https://ndure-labs.arthur-2b2.workers.dev/api/tally/webhook`
+and set a signing secret. Put the same secret in Cloudflare as `TALLY_SIGNING_SECRET` (Workers, ndure-labs, Settings,
+Variables and secrets, type Secret). Without it the team page shows a red line and nothing is stored.

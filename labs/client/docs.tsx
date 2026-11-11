@@ -55,7 +55,7 @@ export function Privacy() {
       <h2>What we keep and why</h2>
       <ul>
         <li><b>Name, email and phone</b>: to book your sessions, send confirmations and reach you on the day. Legal basis: our contract with you.</li>
-        <li><b>Pre session form</b>: year of birth, sex, weight, height, training background, FTP, goals and equipment, to set up your test and make your report.</li>
+        <li><b>Pre session form</b>: year of birth, sex, training background, FTP, goals, equipment and earlier test results if you attach them, to set up your test and make your report. Your answers are kept in Tally and with your booking.</li>
         <li><b>Test data</b>: blood lactate, heart rate and power. This is health data. We only process it with your explicit consent, given when you book, to make your report.</li>
         <li><b>Payment records</b>: kept for 5 years, as Danish bookkeeping law requires. Card details go to Stripe and never reach us.</li>
         <li><b>Optional</b>: anonymised sensor data for developing our sensor, and filming for NDURE content, only if you tick those boxes.</li>
