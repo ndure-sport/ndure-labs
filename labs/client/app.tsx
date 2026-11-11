@@ -8,6 +8,7 @@ import { fmt, when, cphDate, cphOffset } from '../core/time';
 import type { ConsentKey, Booking, Customer, Order } from '../core/types';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note } from './shared';
 import { MonthPicker } from './picker';
+import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING, BRING_SHORT, PEDALS, SHOWERS, formLink } from '../core/visit';
 import { Landing, BookPage } from './landing';
 import { Terms, Privacy, HealthCheck } from './docs';
 import { Opening, type OpeningData } from './opening';
@@ -149,13 +150,13 @@ type AccountData = {
   pendingOrder: { status: string; firstStatus: string; firstStart: string | null } | null;
 };
 
-const PLACE = 'Diplomvej 376, 2800 Kongens Lyngby';
-const MAPS = 'https://maps.google.com/?q=Diplomvej+376,+2800+Kongens+Lyngby';
+const PLACE = MEET;
+const MAPS = MEET_MAPS;
 const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 function CalendarLinks({ b }: { b: Upcoming }) {
   const title = encodeURIComponent('NDURE Labs lactate session');
   const loc = encodeURIComponent(PLACE);
-  const details = encodeURIComponent('Bring cycling shoes, pedals, kit and a bottle.');
+  const details = encodeURIComponent(`Meet at the ${MEET_SHORT}. Bring: ${BRING_SHORT}`);
   const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${stamp(b.start)}/${stamp(b.end)}&location=${loc}&details=${details}`;
   const outlook = `https://outlook.office.com/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${title}&startdt=${encodeURIComponent(new Date(b.start).toISOString())}&enddt=${encodeURIComponent(new Date(b.end).toISOString())}&location=${loc}&body=${details}`;
   return (
@@ -163,7 +164,7 @@ function CalendarLinks({ b }: { b: Upcoming }) {
   );
 }
 
-function SessionCard({ b, busy, onMove, onCancel, confirming, onConfirm, onKeep }: { b: Upcoming; busy: boolean; onMove: () => void; onCancel: () => void; confirming: boolean; onConfirm: () => void; onKeep: () => void }) {
+function SessionCard({ b, c, busy, onMove, onCancel, confirming, onConfirm, onKeep }: { b: Upcoming; c: Customer; busy: boolean; onMove: () => void; onCancel: () => void; confirming: boolean; onConfirm: () => void; onKeep: () => void }) {
   return (
     <div className="scard">
       <div className="scard-top">
@@ -181,10 +182,11 @@ function SessionCard({ b, busy, onMove, onCancel, confirming, onConfirm, onKeep 
         </div>
       )}
       <dl className="sinfo">
-        <dt>Where</dt><dd><a href={MAPS} target="_blank" rel="noopener noreferrer">{PLACE}</a><br /><span className="muted small">DTU campus</span></dd>
-        <dt>Bring</dt><dd>Cycling shoes and pedals, kit, a bottle</dd>
-        <dt>Prep</dt><dd>An easy day before, a normal meal 2 to 3 hours before, no caffeine in the last 2 hours</dd>
+        <dt>Meet</dt><dd><a href={MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}</a><br /><span className="muted small">{PICKUP}</span></dd>
+        <dt>Bring</dt><dd>{BRING.join(', ')}<br /><span className="muted small">{PEDALS}</span></dd>
+        <dt>Prep</dt><dd>{PREP.join(' ')}<br /><span className="muted small">{SHOWERS}</span></dd>
       </dl>
+      <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so your tester can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>
       <CalendarLinks b={b} />
       <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
     </div>
@@ -315,7 +317,7 @@ function Account() {
           <h3>Upcoming</h3>
           {a.upcoming.length === 0 && <p className="muted">Nothing booked.</p>}
           {a.upcoming.map((b) => (
-            <SessionCard key={b.id} b={b} busy={busy} confirming={confirmCancel === b.id}
+            <SessionCard key={b.id} b={b} c={a.customer} busy={busy} confirming={confirmCancel === b.id}
               onMove={() => setMode({ type: 'move', id: b.id })} onCancel={() => setConfirmCancel(b.id)} onKeep={() => setConfirmCancel(null)}
               onConfirm={() => act('/api/me/cancel', { bookingId: b.id }, 'Cancelled. The session is back in your account.')} />
           ))}
@@ -723,7 +725,7 @@ function PartnerConsent() {
     api(`/api/partner?t=${encodeURIComponent(token)}`).then((d) => { setInv(d); setDone(d.done); }).catch((e) => setNote({ kind: 'err', text: e.message }));
   }, [token]);
   if (!inv) return <Shell><NoteBox note={note} />{!note && <p className="muted">Loading…</p>}</Shell>;
-  if (done) return <Shell><section className="card narrow"><h1>Thanks, {inv.partnerName}</h1><p className="muted">Your consent is saved.{inv.start ? ` See you ${when(inv.start)} at Diplomvej 376, Kongens Lyngby.` : ''}</p></section></Shell>;
+  if (done) return <Shell><section className="card narrow"><h1>Thanks, {inv.partnerName}</h1><p className="muted">Your consent is saved.{inv.start ? ` See you ${when(inv.start)} at the ${MEET_SHORT}.` : ''}</p></section></Shell>;
   return (
     <Shell>
       <section className="card narrow">

@@ -4,10 +4,11 @@
 
 import type { Booking, Customer, Email } from '../core/types';
 import { fmt } from '../core/time';
+import { MEET, MEET_SHORT, MEET_MAPS, BRING_SHORT, FORM_URL } from '../core/visit';
 
 const BLUE = '#0008FF';
-const PLACE = 'NDURE Lab, Diplomvej 376, 2800 Kongens Lyngby';
-const MAPS = 'https://maps.google.com/?q=Diplomvej+376,+2800+Kongens+Lyngby';
+const PLACE = MEET;
+const MAPS = MEET_MAPS;
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -32,7 +33,7 @@ export function sessionIcs(b: Booking, opts: { method: 'REQUEST' | 'CANCEL' | 'P
     `DTSTART:${stamp(b.start)}`, `DTEND:${stamp(b.end)}`,
     `SUMMARY:${icsEsc(opts.title ?? 'NDURE Labs lactate session')}`,
     `LOCATION:${icsEsc(PLACE)}`,
-    `DESCRIPTION:${icsEsc(opts.details ?? 'Bring cycling shoes, pedals, kit and a bottle. Change or cancel in your NDURE Labs account.')}`,
+    `DESCRIPTION:${icsEsc(opts.details ?? `Meet at the ${MEET_SHORT}: your tester picks you up. Bring: ${BRING_SHORT} Change or cancel in your NDURE Labs account.`)}`,
     ...(opts.method !== 'PUBLISH' ? [`ORGANIZER;CN=NDURE Labs:mailto:${opts.from}`] : []),
     ...(opts.method !== 'PUBLISH' && opts.to ? [`ATTENDEE;CN=${icsEsc(opts.to)};ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:${opts.to}`] : []),
     `STATUS:${opts.method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED'}`,
@@ -46,7 +47,7 @@ export function sessionIcs(b: Booking, opts: { method: 'REQUEST' | 'CANCEL' | 'P
 function calendarLinks(b: Booking, icsUrl: string) {
   const title = encodeURIComponent('NDURE Labs lactate session');
   const loc = encodeURIComponent(PLACE);
-  const details = encodeURIComponent('Bring cycling shoes, pedals, kit and a bottle.');
+  const details = encodeURIComponent(`Meet at the ${MEET_SHORT}. Bring: ${BRING_SHORT}`);
   const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${stamp(b.start)}/${stamp(b.end)}&location=${loc}&details=${details}`;
   const outlook = (host: string) => `https://${host}/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${title}&startdt=${encodeURIComponent(new Date(b.start).toISOString())}&enddt=${encodeURIComponent(new Date(b.end).toISOString())}&location=${loc}&body=${details}`;
   const link = (href: string, label: string) => `<a href="${esc(href)}" style="color:${BLUE};font-weight:600;text-decoration:none;margin-right:16px;white-space:nowrap">${label}</a>`;
@@ -58,8 +59,8 @@ function sessionCard(b: Booking) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#F4F4F4;border-radius:16px;padding:16px 20px;margin:4px 0 8px"><tr><td>
   <table role="presentation" cellpadding="0" cellspacing="0">
     ${row('When', `<b>${esc(fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' }))}</b>, ${esc(fmt(b.start, { hour: '2-digit', minute: '2-digit' }))} to ${esc(fmt(b.end, { hour: '2-digit', minute: '2-digit' }))}`)}
-    ${row('Where', `<a href="${MAPS}" style="color:#000000">Diplomvej 376, Kongens Lyngby</a><br><span style="color:#767676;font-size:13px">DTU campus</span>`)}
-    ${row('Bring', 'Cycling shoes and pedals, kit, a bottle')}
+    ${row('Meet', `<a href="${MAPS}" style="color:#000000">${esc(MEET_SHORT)}</a><br><span style="color:#767676;font-size:13px">Your tester picks you up at the reception</span>`)}
+    ${row('Bring', esc(BRING_SHORT))}
     ${b.withPartner && b.partnerName ? row('With', esc(b.partnerName)) : ''}
   </table></td></tr></table>`;
 }
@@ -74,6 +75,15 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
   text = text.replace(/\n\nDon't want these reminders\? Stop them here: (\S+)/, (_, u) => { stop = u; return ''; });
 
   let paras = text.split('\n\n').map((p) => p.trim()).filter(Boolean);
+  // The pre session form becomes a highlighted box with a button instead of a long link.
+  let form = '';
+  const fi = paras.findIndex((p) => p.includes(FORM_URL));
+  if (fi >= 0) {
+    const url = paras[fi].match(/https:\/\/tally\.so\/r\/\S+/)?.[0] ?? FORM_URL;
+    const say = paras[fi].replace(/:?\s*https:\/\/tally\.so\/r\/\S+/, '.').replace(/\.\.$/, '.');
+    form = `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#E8E9FF;border-radius:16px;margin:8px 0 16px"><tr><td style="padding:16px 20px"><p style="margin:0 0 12px;font-size:15px;color:#000000">${esc(say)}</p>${button(url, 'Fill in the pre session form')}</td></tr></table>`;
+    paras.splice(fi, 1);
+  }
   // The session card below shows date, place and what to bring: no need to say it twice.
   if (x.booking && e.template === 'confirmation') paras = [`You're booked${x.booking.withPartner && x.booking.partnerName ? `, together with ${x.booking.partnerName}` : ''}. See you in the lab.`, ...paras.slice(1)];
   let body = '';
@@ -83,6 +93,8 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
       paras.map((p) => `<p style="margin:0 0 14px;font-size:14px;color:#555555">${esc(p.replace(new RegExp(`(Your (team )?login code is )${code}\\. ?`), ''))}</p>`).join('');
   } else {
     body = paras.map((p) => `<p style="margin:0 0 16px">${linkify(esc(p)).replace(/\n/g, '<br>')}</p>`).join('');
+    // In the reminder the form goes right before the last two lines (feeling ill, see you).
+    if (form) body = e.template === 'reminder' ? body.replace(/(<p[^>]*>If you feel ill)/, `${form}$1`) : body + form;
   }
 
   // One clear button per email.
@@ -91,9 +103,9 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
   const cta =
     e.template === 'partner' && partner ? button(partner.startsWith('http') ? partner : `https://${partner}`, 'Give your consent')
     : ['payment', 'confirmation', 'rescheduled', 'cancelled', 'checkin', 'nudge', 'expiry'].includes(e.template) ? button(account, e.template === 'cancelled' || e.template === 'nudge' || e.template === 'checkin' || e.template === 'expiry' ? 'Book a session' : 'Open my account')
-    : e.template === 'reminder' ? button(account, 'Manage booking') + ' ' + button(MAPS, 'Directions', false)
+    : e.template === 'reminder' ? button(MAPS, 'Directions', false)
     : '';
-  const card = x.booking && ['confirmation', 'rescheduled', 'reminder'].includes(e.template) ? sessionCard(x.booking) + (x.icsUrl && e.template !== 'reminder' ? calendarLinks(x.booking, x.icsUrl) : '') : '';
+  const card = x.booking && ['confirmation', 'rescheduled'].includes(e.template) ? sessionCard(x.booking) + (x.icsUrl && e.template !== 'reminder' ? calendarLinks(x.booking, x.icsUrl) : '') : '';
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(e.subject)}</title></head>
 <body style="margin:0;padding:0;background:#F4F4F4">
@@ -135,7 +147,7 @@ export const AUTOMATIONS: Automation[] = [
   { template: 'rescheduled', name: 'Session moved, calendar updated', when: 'When the rider or team moves a session', to: 'Rider', kind: 'essential' },
   { template: 'cancelled', name: 'Session cancelled, removed from calendar', when: 'When a session is cancelled, or the picked time filled up during payment', to: 'Rider', kind: 'essential' },
   { template: 'partner', name: 'Training partner consent', when: 'When a rider brings a partner (not offered on the page now)', to: 'Partner', kind: 'essential' },
-  { template: 'reminder', name: 'Session reminder', when: '48 hours before the session', to: 'Rider', kind: 'automatic' },
+  { template: 'reminder', name: 'Session reminder', when: 'The day before the session (26 hours before)', to: 'Rider', kind: 'automatic' },
   { template: 'after', name: 'How was your session?', when: '2 days after the session', to: 'Rider', kind: 'automatic' },
   { template: 'nudge', name: 'Check in reminder', when: '4 and 8 weeks after the last session, only if nothing is booked. Has a stop link', to: 'Rider', kind: 'automatic' },
   { template: 'expiry', name: 'Sessions about to expire', when: '30 days before unused sessions expire', to: 'Rider', kind: 'automatic' },

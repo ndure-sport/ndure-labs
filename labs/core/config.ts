@@ -53,7 +53,7 @@ export const DEFAULT_CONFIG: Config = {
     { id: 'am', label: 'Morning', time: '09:30', minutes: 150, capacity: 2 },
     { id: 'pm', label: 'Afternoon', time: '13:00', minutes: 180, capacity: 1 }
   ],
-  emails: { reminderHoursBefore: 48, afterSessionDays: 2, retestNudgeWeeks: [4, 8], expiryWarningDays: 30, off: ['after', 'nudge', 'expiry'] },
+  emails: { reminderHoursBefore: 26, afterSessionDays: 2, retestNudgeWeeks: [4, 8], expiryWarningDays: 30, off: ['after', 'nudge', 'expiry'] },
   loginCodeMinutes: 10,
   loginMaxAttempts: 5
 };

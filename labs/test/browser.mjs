@@ -87,7 +87,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
   const firstDay = await page.locator('button.mday').first().getAttribute('aria-label');
   ok('first bookable day is on or after 1 December', /December|January|February/.test(firstDay), firstDay);
-  ok('summary shows the full address', (await page.locator('.sum').innerText()).includes('2800 Kongens Lyngby'));
+  ok('summary shows where to meet', (await page.locator('.sum').innerText()).includes('Diplomvej 381'));
   await page.locator('button.mday').nth(1).click();
   await page.locator('.tslot').first().click();
   ok('summary shows the picked time', !(await page.locator('.sum').innerText()).includes('Not chosen yet'));
@@ -131,7 +131,8 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   const conf = lastEmail(email);
   ok('confirmation email sent', !!conf, conf?.subject);
 
-  ok('session card shows where and what to bring', (await page.locator('.scard').first().innerText()).includes('Cycling shoes'));
+  ok('session card shows where and what to bring', (await page.locator('.scard').first().innerText()).includes('Diplomvej 381') && (await page.locator('.scard').first().innerText()).includes('sleeveless top'));
+  ok('pre session form link with the rider filled in', /^https:\/\/tally\.so\/r\/peyDxB\?.*email=browser/.test(await page.locator('.formbox a').getAttribute('href')));
   ok('add to calendar links', (await page.locator('.cal-links a').count()) === 3);
   ok('add sessions at the pack price: 1 more is 435 kr', (await page.getByRole('button', { name: /^Add 1 session, pay/ }).innerText()) === 'Add 1 session, pay 435 kr');
 

@@ -39,9 +39,12 @@ Extra sessions added from the account say "for 2 extra sessions" and expire with
 
 **Booking confirmed**
 > You're booked. See you in the lab.
-> Change or cancel for free until 24 hours before at book.ndure.dk/account. You have 2 more sessions to book.
+> Change or cancel for free until 24 hours before at labs.ndure.dk/account. You have 2 more sessions to book.
 
-Plus a card with when, where (Diplomvej 376, DTU campus) and what to bring.
+Then a blue box: "Before your session, please fill in the pre session form (4 minutes), so your tester can set up
+your test." with a **Fill in the pre session form** button. The link fills in the rider's name, email, FTP, session
+and booking number in the form. Below it a card with when, where to meet (DTU Science Park reception, Diplomvej 381,
+the tester picks them up) and what to bring.
 
 **Session moved**
 > Your session moved from Tue 8 Dec, 09:30 to Wed 9 Dec, 13:00. The calendar invite is updated.
@@ -59,15 +62,39 @@ The last sentence only shows when the session went back. "By the NDURE team" onl
 
 | Email | When | Status | Subject |
 |---|---|---|---|
-| Session reminder | 48 hours before the session | **On** | See you Tuesday at 09:30 |
+| Session reminder | The day before (26 hours before) | **On** | Getting ready for your NDURE Labs session tomorrow |
 | How was your session? | 2 days after the session | Off: Anna sends the report from Outlook instead | How was your session? |
 | Check in reminder | 4 and 8 weeks after the last session, only if nothing is booked | Off | Time to see if your training works (week 4), Your thresholds have probably moved (week 8) |
 | Sessions about to expire | 30 days before unused sessions expire | Off | 2 sessions expire soon |
 
-**Session reminder** (buttons: Manage booking, Directions)
-> Your session is on Tue 8 Dec, 09:30 at Diplomvej 376, Kongens Lyngby.
-> Prep: an easy day before, a normal meal 2 to 3 hours before, no caffeine in the last 2 hours.
-> Bring cycling shoes, pedals, kit and a bottle. Showers and towels are on site.
+**Session reminder**, the day before (26 hours before, so it always lands the day before). Subject: "Getting ready for
+your NDURE Labs session tomorrow" ("today" if the booking was made less than a day ahead). Button: Directions.
+> Hi Mette,
+>
+> We're looking forward to seeing you tomorrow at 09:30. Your tester picks you up at the DTU Science Park reception, Diplomvej 381.
+>
+> To get the most reliable results, and results you can compare next time:
+> • Avoid hard or long training in the 24 hours before.
+> • Eat as you normally would, with a normal meal 2 to 3 hours before your session.
+> • Drink as you normally would.
+>
+> Please bring:
+> • Cycling shoes and bib shorts
+> • A sleeveless top (the sensor goes on your upper arm)
+> • A water bottle
+> • Your heart rate strap, if you have one
+> Our bike has Shimano SPD-SL pedals. Other cleats? Bring your own pedals.
+>
+> Showers are available after your session.
+>
+> [blue box] Haven't filled in the pre session form yet? Please do it today (4 minutes). [Fill in the pre session form]
+>
+> If you feel ill, just reply to this email and we'll move your session.
+>
+> See you tomorrow!
+
+The meeting point, what to bring and the prep texts live in `core/visit.ts`. Change them there and the website,
+account page, emails and calendar invites all follow.
 
 Safety rules for automatic emails:
 - They only go out in a short window after their moment. Switching one back on never mails old sessions.

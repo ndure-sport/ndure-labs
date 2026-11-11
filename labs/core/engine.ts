@@ -3,6 +3,7 @@
 // on Cloudflare with a real database.
 
 import type { Config, Block } from './config';
+import { MEET, MEET_SHORT, PICKUP, PREP, BRING, PEDALS, SHOWERS, formLink } from './visit';
 import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact, ReportStatus } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
@@ -525,7 +526,7 @@ export class Labs {
       'confirmation',
       `confirm:${b.id}`,
       `Booked: ${when(b.start)}`,
-      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\nDiplomvej 376, 2800 Kongens Lyngby. Bring cycling shoes and pedals.\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
+      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\nBefore your session, please fill in the pre session form (4 minutes), so your tester can set up your test: ${formLink(c, b)}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
     );
     return b;
   }
@@ -1048,7 +1049,7 @@ export class Labs {
         `DTSTART:${stamp(new Date(b.start).toISOString())}`,
         `DTEND:${stamp(b.end)}`,
         `SUMMARY:${icsText(`Labs: ${c.name}${b.withPartner ? ` + ${b.partnerName}` : ''}`)}`,
-        'LOCATION:Diplomvej 376\\, 2800 Kongens Lyngby',
+        `LOCATION:${icsText(MEET)}`,
         'END:VEVENT'
       );
     }
@@ -1077,7 +1078,18 @@ export class Labs {
       const c = this.customer(b.customerId);
       const start = Date.parse(b.start);
       if (on('reminder') && b.status === 'booked' && start > now && start - now <= hours(E.reminderHoursBefore)) {
-        this.send(c.email, 'reminder', `reminder:${b.id}`, `See you ${fmt(b.start, { weekday: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}`, `Your session is on ${when(b.start)} at Diplomvej 376, Kongens Lyngby.\n\nPrep: an easy day before, a normal meal 2 to 3 hours before, no caffeine in the last 2 hours. Bring cycling shoes, pedals, kit and a bottle. Showers and towels are on site.`);
+        const sameDay = cphDate(start) === cphDate(now);
+        const day = sameDay ? 'today' : 'tomorrow';
+        this.send(c.email, 'reminder', `reminder:${b.id}`, `Getting ready for your NDURE Labs session ${day}`, [
+          `Hi ${c.name.split(' ')[0]},`,
+          `We're looking forward to seeing you ${day} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}. Your tester picks you up at the ${MEET_SHORT}.`,
+          `To get the most reliable results, and results you can compare next time:\n${PREP.map((x) => `• ${x}`).join('\n')}`,
+          `Please bring:\n${BRING.map((x) => `• ${x}`).join('\n')}\n${PEDALS}`,
+          SHOWERS,
+          `Haven't filled in the pre session form yet? Please do it ${sameDay ? 'now' : 'today'} (4 minutes): ${formLink(c, b)}`,
+          `If you feel ill, just reply to this email and we'll move your session.`,
+          `See you ${day}!`
+        ].join('\n\n'));
       }
       // Only in the week after: switching it back on never mails old sessions.
       if (on('after') && (b.status === 'attended' || (b.status === 'booked' && start < now)) && now >= start + days(E.afterSessionDays) && now < start + days(E.afterSessionDays + 7)) {

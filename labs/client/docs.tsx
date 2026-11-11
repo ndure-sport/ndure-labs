@@ -56,12 +56,13 @@ export function Privacy() {
       <ul>
         <li><b>Name, email and phone</b>: to book your sessions, send confirmations and reach you on the day. Legal basis: our contract with you.</li>
         <li><b>FTP and goal</b> (optional): to plan your test.</li>
+        <li><b>Pre session form</b>: year of birth, sex, weight, height, training background and equipment, to set up your test and make your report.</li>
         <li><b>Test data</b>: blood lactate, heart rate and power. This is health data. We only process it with your explicit consent, given when you book, to make your report.</li>
         <li><b>Payment records</b>: kept for 5 years, as Danish bookkeeping law requires. Card details go to Stripe and never reach us.</li>
         <li><b>Optional</b>: anonymised sensor data for developing our sensor, and filming for NDURE content, only if you tick those boxes.</li>
       </ul>
       <h2>Who helps us</h2>
-      <p>Stripe (payments), Brevo (emails) and Cloudflare (hosting and the security check). They process data on our behalf under data processing agreements.</p>
+      <p>Stripe (payments), Brevo (emails), Tally (the pre session form) and Cloudflare (hosting and the security check). They process data on our behalf under data processing agreements.</p>
       <h2>How long</h2>
       <p>We keep your account and test data while you use NDURE Labs, and delete it when you ask, except what bookkeeping law requires us to keep.</p>
       <h2>Your rights</h2>

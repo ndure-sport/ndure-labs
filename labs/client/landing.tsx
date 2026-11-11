@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG } from '../core/config';
 import { fmt, when, cphDate } from '../core/time';
 import type { ConsentKey } from '../core/types';
 import { MonthPicker } from './picker';
+import { MEET_SHORT, MEET_MAPS } from '../core/visit';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note, type PublicConfig } from './shared';
 import { CONTACT_EMAIL, LINKS, OTHER_LABS_PRICE, JACK, PLAN_INFO, RECOMMENDED, PLAN_ORDER, FLOW, FAQS } from './content';
 
@@ -168,9 +169,9 @@ function Practical() {
     <section id="faq" className="band rv" aria-labelledby="faq-t">
       <div className="stack g56">
         <div className="kv">
-          <div><span>WHERE</span><a href="https://maps.google.com/?q=Diplomvej+376,+2800+Kongens+Lyngby" target="_blank" rel="noopener noreferrer">Diplomvej 376, Kongens Lyngby (DTU)</a></div>
+          <div><span>WHERE</span><a href={MEET_MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}, Kongens Lyngby</a></div>
           <div><span>WHEN</span>Tue to Fri, daytime. About 2 hours.</div>
-          <div><span>BRING</span>Shoes, pedals, kit, a bottle</div>
+          <div><span>BRING</span>Cycling shoes, bib shorts, a sleeveless top, a bottle</div>
           <div><span>FOR</span>Any cyclist who rides regularly</div>
         </div>
         <div className="stack g16">
@@ -379,7 +380,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
       <p style={{ margin: 0, fontWeight: 600, fontSize: 17 }}>Your booking</p>
       <div className="ln"><span>Sessions</span><span>{info.tier}, {qty}</span></div>
       <div className="ln"><span>{qty > 1 ? 'First session' : 'Session'}</span><span style={{ textAlign: 'right' }}>{start ? when(start) : 'Not chosen yet'}</span></div>
-      <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>Diplomvej 376<br />2800 Kongens Lyngby</span></div>
+      <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>DTU Science Park reception<br />Diplomvej 381, Kongens Lyngby</span></div>
       <div className="ln"><span>Per session</span><span>{q.saving > 0 && <s style={{ color: '#999', marginRight: 6 }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
       <div className="ln tot"><span style={{ color: '#000' }}>Total</span><span>{kr(q.total)}</span></div>
       {(() => {

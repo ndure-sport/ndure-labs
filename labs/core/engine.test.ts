@@ -148,15 +148,21 @@ test('no show uses the session; packs expire after 12 months', () => {
   assert.throws(() => labs.book(c.id, labs.slots()[0].start, { by: 'rider' }), /no sessions left/);
 });
 
-test('emails: reminder 2 days before, follow up after, nudges only when nothing is booked', () => {
+test('emails: reminder the day before, follow up after, nudges only when nothing is booked', () => {
   const { labs, tick } = setup();
   const o = labs.checkout(rider('a@x.dk', { qty: 3, later: true }));
   labs.paid(o.id);
   const c = labs.customerByEmail('a@x.dk')!;
   labs.book(c.id, '2026-12-04T09:30:00+01:00', { by: 'rider' });
   assert.equal(tick(hours(1)).length, 0);
-  assert.deepEqual(tick(days(2)).map((e) => e.template), ['reminder']);
-  assert.deepEqual(tick(days(4)).map((e) => e.template), ['after']);
+  assert.equal(tick(days(2)).length, 0); // 46 hours before: too early
+  const rem = tick(hours(21)); // Thursday 08:00, 25.5 hours before
+  assert.deepEqual(rem.map((e) => e.template), ['reminder']);
+  assert.equal(rem[0].subject, 'Getting ready for your NDURE Labs session tomorrow');
+  assert.ok(rem[0].body.includes('DTU Science Park reception, Diplomvej 381'));
+  assert.ok(rem[0].body.includes('https://tally.so/r/peyDxB?') && rem[0].body.includes('email=a%40x.dk'), 'form link with the rider prefilled');
+  assert.ok(rem[0].body.includes('sleeveless top'));
+  assert.deepEqual(tick(days(3) + hours(3)).map((e) => e.template), ['after']);
   assert.deepEqual(tick(days(28)).map((e) => e.template), ['nudge']);
   // Rider books again: no more nudges.
   labs.book(c.id, labs.slots()[0].start, { by: 'rider' });
@@ -482,7 +488,7 @@ test('emails: more than 40 automatic emails in one run pauses them all and alert
   assert.equal(labs.db.emails.filter((e) => e.template === 'after').length, 0, 'dropped');
   // A new burst (45 reminders for one session), this time sent anyway.
   for (let i = 0; i < 45; i++) labs.book(labs.customerByEmail(`r${i}@x.dk`)!.id, '2026-12-08T09:30:00+01:00', { by: 'team' });
-  tick(3 * 86_400_000);
+  tick(4 * 86_400_000);
   assert.ok(labs.db.autoPaused);
   assert.equal(labs.db.emails.filter((e) => e.template === 'reminder').length, 0);
   labs.resumeEmails(true);
