@@ -16,8 +16,10 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ndure-labs-test",
-      "database_id": "c5b27b7f-49ff-4b95-ac39-9e33f10b5634"
+      // Moved on 11 Nov 2026: the old database (ndure-labs-test, c5b27b7f-49ff-4b95-ac39-9e33f10b5634)
+      // made every deploy fail with "binding DB of type d1 failed to generate" (10021).
+      "database_name": "ndure-labs-live",
+      "database_id": "6ba3f53b-e392-47d6-8ab2-77772bb0e12d"
     }
   ],
   // Every 15 minutes: reminders, follow ups, retest nudges, staff summary, unpaid seats, alerts.
