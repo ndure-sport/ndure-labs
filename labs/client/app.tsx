@@ -328,7 +328,7 @@ function Account() {
 
           {mode && (
             <div className="scard" id="picker" style={{ scrollMarginTop: 96 }}>
-              <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Fri{noticeText(DEFAULT_CONFIG) && ` · at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
+              <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Thu{noticeText(DEFAULT_CONFIG) && ` · at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
               {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? (
                 <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">Email contact@ndure.dk and we find a time for you.</p></div>
               ) : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
@@ -514,7 +514,7 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
           <a href="https://tally.so/forms/peyDxB/submissions" target="_blank" rel="noopener noreferrer">View in Tally →</a>
         </div>
       )}
-      <div className="skey"><span className="tchip am"><b>09:30</b><small>Morning</small></span><span className="tchip pm"><b>13:00</b><small>Afternoon</small></span><span className="pill ok">Health ok</span><span className="pill bad">Consent missing</span><span className="pill form">Form ✓</span><span className="pill fmiss">Form missing</span><span>On the day: mark who came. Before the day: move or cancel.</span></div>
+      <div className="skey"><span className="tchip am"><b>08:00</b><small>Morning</small></span><span className="tchip pm"><b>12:30</b><small>Afternoon</small></span><span className="pill ok">Health ok</span><span className="pill bad">Consent missing</span><span className="pill form">Form ✓</span><span className="pill fmiss">Form missing</span><span>On the day: mark who came. Before the day: move or cancel.</span></div>
       {t.days.length === 0 && <p className="muted">Nothing booked yet.</p>}
       {t.days.length > 0 && <div className="srow shead"><span>Session</span><span>Rider</span><span>Contact</span><span>Status</span><span style={{ textAlign: 'right' }}>Actions</span></div>}
       {t.days.map(({ date, list }) => {

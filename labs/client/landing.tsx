@@ -170,7 +170,7 @@ function Practical() {
       <div className="stack g56">
         <div className="kv">
           <div><span>WHERE</span><a href={MEET_MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}, Kongens Lyngby</a></div>
-          <div><span>WHEN</span>Tue to Fri, daytime. About 2 hours.</div>
+          <div><span>WHEN</span>Tue to Thu, daytime. About 2 hours.</div>
           <div><span>BRING</span>{BRING_LINE}</div>
           <div><span>FOR</span>Any cyclist who rides regularly</div>
         </div>
@@ -432,7 +432,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
           {step === 2 && (
             <div className="cols">
               <div className="main panel stack g16">
-                <div className="row spread"><p className="h3" style={{ margin: 0 }}>{qty > 1 ? 'Pick your first session' : 'Pick your session'}</p><span className="muted small">Tue to Fri{noticeText(DEFAULT_CONFIG) && ` · book at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
+                <div className="row spread"><p className="h3" style={{ margin: 0 }}>{qty > 1 ? 'Pick your first session' : 'Pick your session'}</p><span className="muted small">Tue to Thu{noticeText(DEFAULT_CONFIG) && ` · book at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
                 {qty > 1 && <p className="muted small" style={{ margin: 0 }}>Your other {qty - 1} sessions you book later from your account, whenever it suits you.</p>}
                 {slotError ? (
                   <div className="stack g12"><Msg note={{ kind: 'err', text: slotError }} /><button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={reloadSlots}>Try again</button></div>

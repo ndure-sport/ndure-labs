@@ -171,6 +171,16 @@ export class Labs {
     return n;
   }
 
+  // A flex pair (config.pairs): true when another session of the pair on the same day is booked or held.
+  private pairBusy(date: string, blockId: string, opts: { excludeOrder?: string; excludeBooking?: string } = {}) {
+    const dow = dayOfWeek(date);
+    const pair = (this.config.pairs ?? []).find((p) => p.dow === dow && p.blocks.includes(blockId));
+    if (!pair) return false;
+    const dayMs = Date.parse(date + 'T12:00:00Z');
+    const sameDay = localStarts(dayMs - hours(14), dayMs + hours(14), [dow], this.config.blocks).filter((s) => s.date === date);
+    return sameDay.some((s) => s.blockId !== blockId && pair.blocks.includes(s.blockId) && this.takenAt(s.start, opts) > 0);
+  }
+
   private slotDef(start: string) {
     const ms = Date.parse(start);
     const found = this.starts(ms, ms).find((s) => Date.parse(s.start) === ms);
@@ -196,6 +206,7 @@ export class Labs {
       .map((s) => {
         const b = this.block(s.blockId);
         const taken = this.takenAt(s.start, opts);
+        const busy = this.pairBusy(s.date, s.blockId, opts);
         return {
           start: s.start,
           end: this.iso(Date.parse(s.start) + b.minutes * 60_000),
@@ -203,7 +214,7 @@ export class Labs {
           label: b.label,
           capacity: b.capacity,
           taken,
-          free: Math.max(0, b.capacity - taken)
+          free: busy ? 0 : Math.max(0, b.capacity - taken)
         };
       })
       .filter((s) => s.free >= need);
@@ -223,7 +234,7 @@ export class Labs {
     if (!opts.team && opens && cphDate(ms) < opens) {
       throw new LabsError(`Booking opens for sessions from ${fmt(opens + 'T12:00:00Z', { day: 'numeric', month: 'long' })}.`, 'not_open');
     }
-    const free = def.block.capacity - this.takenAt(start, opts);
+    const free = this.pairBusy(def.date, def.blockId, opts) ? 0 : def.block.capacity - this.takenAt(start, opts);
     if (free < need) {
       throw new LabsError(need > 1 ? 'There are no longer 2 free spots in that session. Pick another one.' : 'That session just filled up. Pick another one.', 'slot_taken');
     }
@@ -706,7 +717,9 @@ export class Labs {
   hoursFor(dow: number): string[] {
     const set = this.db.hours?.[String(dow)];
     if (set) return set.filter((id) => this.config.blocks.some((b) => b.id === id));
-    return this.config.days.includes(dow) ? this.config.blocks.map((b) => b.id) : [];
+    if (!this.config.days.includes(dow)) return [];
+    const week = this.config.week?.[dow];
+    return week ? this.config.blocks.filter((b) => week.includes(b.id)).map((b) => b.id) : this.config.blocks.map((b) => b.id);
   }
 
   opensOn(): string | null {

@@ -8,7 +8,20 @@ import { days, hours } from './time.ts';
 // A fixed clock: Monday 30 November 2026, 10:00 Copenhagen.
 // Most tests book close to "now", so they run with a short notice period; the 1 week rule has its own test.
 // Every automatic email on in the tests, so they all keep being tested.
-const TEST_CONFIG: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12, opensOn: null, emails: { ...DEFAULT_CONFIG.emails, off: [] } };
+// The older tests run on the earlier week (Tue to Fri, 09:30 for 2 riders, 13:00 for 1), so they keep testing
+// seats, partners and holds. The current week (config.ts) has its own tests at the end of this file.
+const LEGACY: typeof DEFAULT_CONFIG = {
+  ...DEFAULT_CONFIG,
+  days: [2, 3, 4, 5],
+  blocks: [
+    { id: 'am', label: 'Morning', time: '09:30', minutes: 150, capacity: 2 },
+    { id: 'pm', label: 'Afternoon', time: '13:00', minutes: 180, capacity: 1 }
+  ],
+  week: undefined,
+  pairs: []
+};
+const TEST_CONFIG: typeof DEFAULT_CONFIG = { ...LEGACY, minNoticeHours: 12, opensOn: null, emails: { ...DEFAULT_CONFIG.emails, off: [] } };
+const NOW_CONFIG: typeof DEFAULT_CONFIG = { ...DEFAULT_CONFIG, minNoticeHours: 12, opensOn: null, emails: { ...DEFAULT_CONFIG.emails, off: [] } };
 function setup(config = TEST_CONFIG) {
   let now = Date.parse('2026-11-30T10:00:00+01:00');
   const labs = new Labs(emptyDb(), config, () => now);
@@ -348,7 +361,7 @@ test('S1: pressing back and paying again still counts as new; a second payment e
 });
 
 test('riders book at least 1 week ahead; the team can book any time', () => {
-  const { labs } = setup({ ...DEFAULT_CONFIG, minNoticeHours: 168 }) // the rule as it will be switched on again;
+  const { labs } = setup({ ...LEGACY, minNoticeHours: 168 }) // the rule as it will be switched on again;
   const first = labs.slots()[0].start;
   assert.ok(Date.parse(first) >= Date.parse('2026-12-07T10:00:00+01:00'), 'nothing inside the first week');
   assert.equal(first, '2026-12-08T09:30:00+01:00');
@@ -677,4 +690,58 @@ test('reminder: no form box when the form is already in', () => {
   const rem = labs.db.emails.find((e) => e.template === 'reminder')!;
   assert.ok(!rem.body.includes('tally.so'), 'no form link');
   assert.ok(rem.body.includes('Please bring'));
+});
+
+// ---------- the current week: Tue 4, Wed 4 with a flex pair, Thu 3, one rider each ----------
+const dayOf = (iso: string) => new Date(iso).getUTCDay();
+const clockOf = (iso: string) => iso.slice(11, 16);
+
+test('week: Tue 08:00 10:00 12:30 14:45, Wed the same, Thu without 14:45, one rider each', () => {
+  const { labs } = setup(NOW_CONFIG);
+  const s = labs.slots();
+  const on = (date: string) => s.filter((x) => x.start.startsWith(date)).map((x) => clockOf(x.start));
+  assert.deepEqual(on('2026-12-08'), ['08:00', '10:00', '12:30', '14:45']); // Tuesday
+  assert.deepEqual(on('2026-12-09'), ['08:00', '10:00', '12:30', '14:45']); // Wednesday
+  assert.deepEqual(on('2026-12-10'), ['08:00', '10:00', '12:30']); // Thursday
+  assert.equal(on('2026-12-07').length + on('2026-12-11').length, 0); // Monday and Friday closed
+  for (const x of s) {
+    assert.ok([2, 3, 4].includes(dayOf(x.start)));
+    assert.equal(x.capacity, 1);
+    assert.equal(Date.parse(x.end) - Date.parse(x.start), 2 * 3600_000);
+  }
+});
+
+test('week: Wednesday 08:00 and 14:45 are one flex session, only one can be booked', () => {
+  const { labs } = setup(NOW_CONFIG);
+  const c = labs.giveSessions({ email: 'flex@x.dk', name: 'Flex', qty: 6, note: 't' }).customerId;
+  const early = '2026-12-09T08:00:00+01:00', late = '2026-12-09T14:45:00+01:00';
+  const free = (start: string) => labs.slots().some((x) => x.start === start);
+  assert.ok(free(early) && free(late));
+  const b = labs.book(c, early, { by: 'rider' });
+  assert.equal(free(late), false, '14:45 shows as full once 08:00 is booked');
+  assert.throws(() => labs.book(c, late, { by: 'rider' }), /filled up/);
+  // Other Wednesdays and other sessions that day are not touched.
+  assert.ok(free('2026-12-16T14:45:00+01:00') && free('2026-12-09T10:00:00+01:00') && free('2026-12-09T12:30:00+01:00'));
+  // Moving the 08:00 rider to 14:45 the same day works: the pair is their own booking.
+  const moved = labs.reschedule(b.id, late, 'rider');
+  assert.equal(free(early), false, 'now 08:00 is the one that is full');
+  labs.cancel(moved.id, 'rider');
+  assert.ok(free(early) && free(late), 'after a cancel both are free again');
+});
+
+test('week: a rider paying for Wednesday 14:45 blocks 08:00 until the hold runs out', () => {
+  const { labs, tick } = setup(NOW_CONFIG);
+  labs.checkout(rider('hold@x.dk', { start: '2026-12-09T14:45:00+01:00' }));
+  assert.equal(labs.slots().some((x) => x.start === '2026-12-09T08:00:00+01:00'), false);
+  assert.throws(() => labs.checkout(rider('other@x.dk', { start: '2026-12-09T08:00:00+01:00' })), /filled up/);
+  tick(hours(1));
+  assert.ok(labs.slots().some((x) => x.start === '2026-12-09T08:00:00+01:00'));
+});
+
+test('week: the team still cannot book both flex sessions on a Wednesday', () => {
+  const { labs } = setup(NOW_CONFIG);
+  const a = labs.giveSessions({ email: 'a@x.dk', name: 'A', qty: 1, note: 't' }).customerId;
+  const b2 = labs.giveSessions({ email: 'b@x.dk', name: 'B', qty: 1, note: 't' }).customerId;
+  labs.book(a, '2026-12-09T14:45:00+01:00', { by: 'team' });
+  assert.throws(() => labs.book(b2, '2026-12-09T08:00:00+01:00', { by: 'team' }), /filled up/);
 });

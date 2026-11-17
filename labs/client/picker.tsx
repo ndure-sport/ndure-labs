@@ -74,7 +74,7 @@ export function MonthPicker({ slots, value, onChange, compact = false }: { slots
       <div className="tlist" role="group" aria-label="Time">
         {times.map((s) => (
           <button type="button" key={s.start} className="tslot" aria-pressed={value === s.start} onClick={() => onChange(s.start)}>
-            <span><b>{clock(s.start)}</b><small>{s.label}, about 2 hours</small></span>
+            <span><b>{clock(s.start)}</b><small>{clock(s.start)} to {clock(s.end)}</small></span>
             <em className={s.free === 1 ? 'last' : ''}>{s.free === 1 ? '1 spot left' : `${s.free} spots left`}</em>
           </button>
         ))}

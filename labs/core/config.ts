@@ -17,6 +17,12 @@ export type Config = {
   holdMinutes: number; // seat held while a rider pays
   days: number[]; // 0 Sunday … 6 Saturday
   blocks: Block[];
+  // Which sessions are open on each weekday (0 Sunday … 6 Saturday). A day that is missing opens every session.
+  // The team can change this on the team page; that choice wins.
+  week?: Record<number, string[]>;
+  // Sessions on one weekday that share one rider: once one of them is booked (or held while paying),
+  // the others in the group show as full that day.
+  pairs?: { dow: number; blocks: string[] }[];
   emails: {
     reminderHoursBefore: number;
     afterSessionDays: number;
@@ -50,11 +56,21 @@ export const DEFAULT_CONFIG: Config = {
   bookingWeeksAhead: 8,
   opensOn: null,
   holdMinutes: 35,
-  days: [2, 3, 4, 5],
+  // Tuesday 4 sessions, Wednesday 4 with one flex pair, Thursday 3. One rider per session.
+  days: [2, 3, 4],
   blocks: [
-    { id: 'am', label: 'Morning', time: '09:30', minutes: 150, capacity: 2 },
-    { id: 'pm', label: 'Afternoon', time: '13:00', minutes: 180, capacity: 1 }
+    { id: 's0800', label: 'Morning', time: '08:00', minutes: 120, capacity: 1 },
+    { id: 's1000', label: 'Morning', time: '10:00', minutes: 120, capacity: 1 },
+    { id: 's1230', label: 'Afternoon', time: '12:30', minutes: 120, capacity: 1 },
+    { id: 's1445', label: 'Afternoon', time: '14:45', minutes: 120, capacity: 1 }
   ],
+  week: {
+    2: ['s0800', 's1000', 's1230', 's1445'],
+    3: ['s0800', 's1000', 's1230', 's1445'],
+    4: ['s0800', 's1000', 's1230']
+  },
+  // Wednesday: 08:00 and 14:45 are one flex session. Only one of the two can be booked.
+  pairs: [{ dow: 3, blocks: ['s0800', 's1445'] }],
   emails: { reminderHoursBefore: 26, afterSessionDays: 2, retestNudgeWeeks: [4, 8], expiryWarningDays: 30, off: ['after', 'nudge', 'expiry'] },
   loginCodeMinutes: 10,
   loginMaxAttempts: 5
