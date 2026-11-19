@@ -58,7 +58,8 @@ ok('webhook accepted', (await webhook(orderA)) === 200);
 r = await call(`/api/me?paid=${orderA}`, undefined, A);
 ok('new rider back from Stripe is logged in, booked, 5 left', r.status === 200 && r.d.upcoming.length === 1 && r.d.balance.total === 5, `status ${r.status}`);
 await sleep(1500);
-ok('confirmation email with calendar invite', emails().some((e) => e.to === emailA && e.subject.startsWith('Booked') && e.attach));
+ok('confirmation email without the calendar file', emails().some((e) => e.to === emailA && e.subject.startsWith('Booked') && !e.attach));
+ok('calendar invite in its own email', emails().some((e) => e.to === emailA && e.subject.startsWith('NDURE Labs session,') && e.attach));
 ok('payment webhook twice does not double book', (await webhook(orderA)) === 200 && (await call('/api/me', undefined, A)).d.upcoming.length === 1);
 
 console.log('\n-- S1 account takeover attempt');

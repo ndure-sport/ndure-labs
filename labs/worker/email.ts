@@ -15,7 +15,7 @@ import { Labs } from '../core/engine';
 import { DEFAULT_CONFIG } from '../core/config';
 import { when } from '../core/time';
 import { hmacHex } from './auth';
-import { renderEmail, sessionIcs, teamDetails } from './mail';
+import { renderEmail, sessionIcs, teamDetails, riderInvite } from './mail';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const plainHtml = (text: string) =>
@@ -100,13 +100,22 @@ export async function deliver(env: Env, max: number): Promise<{ sent: number; fa
     const icsUrl = b ? `${appUrl}/calendar/session/${b.id}/${await sessionToken(peek.secrets.feed, b.id)}.ics` : undefined;
     const method = e.template === 'cancelled' ? 'CANCEL' : 'REQUEST';
     try {
-      const attach = b ? { name: e.template === 'cancelled' ? 'cancelled.ics' : 'invite.ics', content: sessionIcs(b, { method, to: e.to, from }) } : undefined;
+      // The email with the content goes out without the calendar file: accepting an invite can make
+      // Outlook hide the email it came with, and then the rider loses the details.
       const out = renderEmail(e, { appUrl, booking: b, icsUrl });
-      await brevo(env, [e.to], e.subject, out.text, attach, out.html);
+      await brevo(env, [e.to], e.subject, out.text, undefined, out.html);
       results[e.id] = null;
     } catch (err) {
       results[e.id] = String(err).slice(0, 300);
       continue;
+    }
+    // Then the invite on its own: only the calendar file and a short text. Best effort, like the team copy:
+    // a failure here must not resend the content email, and that email has "Add to calendar" links.
+    if (b) {
+      const inv = riderInvite(b, c, e.template, appUrl);
+      await brevo(env, [e.to], inv.subject, inv.text, { name: method === 'CANCEL' ? 'cancelled.ics' : 'invite.ics', content: sessionIcs(b, { method, to: e.to, from, details: inv.details }) }).catch((err) =>
+        console.error('Rider calendar invite failed', err)
+      );
     }
     // The team calendar gets its own invite for every booking, move and cancel. Best effort.
     if (b && env.TEAM_CALENDAR_EMAIL) {

@@ -25,8 +25,11 @@ Every rider email has the NDURE logo on top, the address and contact@ndure.dk at
 | Pick another time | The picked time filled up while they were paying | Rider | Please pick another time | Book a session |
 | Training partner | A rider brings a partner (not offered on the page now) | Partner | Name signed you up for NDURE Labs | Give your consent |
 
-Confirmed and moved emails carry a calendar invite (Outlook and Gmail put it straight in the calendar) and
-"Add to calendar" links. A cancelled email removes it from the calendar again.
+The calendar invite is its own email, sent right after the booking, moved or cancelled email. Accepting an
+invite can make Outlook hide the email it came with, so the email with the content never carries the calendar
+file. The invite email is short: subject "NDURE Labs session, Tue 24 Nov, 10:00" ("Updated: …" after a move,
+"Cancelled: …" to remove it). The event itself holds the meeting point, the pre session form link (until the form
+is in), what to bring and the account link. The booking and moved emails keep "Add to calendar" links as a backup.
 
 ### Texts
 

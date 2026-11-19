@@ -745,3 +745,19 @@ test('week: the team still cannot book both flex sessions on a Wednesday', () =>
   labs.book(a, '2026-12-09T14:45:00+01:00', { by: 'team' });
   assert.throws(() => labs.book(b2, '2026-12-09T08:00:00+01:00', { by: 'team' }), /filled up/);
 });
+
+test('calendar invite is its own short email; the content email says it comes separately', async () => {
+  const { riderInvite, sessionIcs } = await import('../worker/mail.ts');
+  const { labs } = setup(NOW_CONFIG);
+  const c = labs.giveSessions({ email: 'inv@x.dk', name: 'Ina Vite', qty: 2, note: 't' }).customerId;
+  const b = labs.book(c, '2026-12-09T10:00:00+01:00', { by: 'rider' });
+  const conf = labs.db.emails.find((e) => e.template === 'confirmation')!;
+  assert.ok(conf.body.includes('The calendar invite comes in a separate email') && !conf.body.includes('attached'));
+  const cust = labs.customerByEmail('inv@x.dk')!;
+  const inv = riderInvite(b, cust, 'confirmation', 'https://book.ndure.dk');
+  assert.ok(inv.subject.startsWith('NDURE Labs session,') && inv.details.includes('tally.so/r/peyDxB') && inv.details.includes('https://book.ndure.dk/account'));
+  assert.ok(sessionIcs(b, { method: 'REQUEST', to: 'inv@x.dk', from: 'labs@ndure.dk', details: inv.details }).includes('METHOD:REQUEST'));
+  assert.ok(riderInvite(b, cust, 'rescheduled', 'x').subject.startsWith('Updated: '));
+  assert.ok(riderInvite(b, cust, 'cancelled', 'x').subject.startsWith('Cancelled: '));
+  assert.ok(!riderInvite({ ...b, form: { at: 'x' } as any }, cust, 'confirmation', 'x').details.includes('tally.so'), 'no form link once the form is in');
+});

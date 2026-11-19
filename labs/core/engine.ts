@@ -542,7 +542,7 @@ export class Labs {
       'confirmation',
       `confirm:${b.id}`,
       `Booked: ${when(b.start)}`,
-      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\n${b.form ? 'We already have your pre session form, thanks.' : `Before your session, please fill in the pre session form (4 minutes), so we can set up your test: ${formLink(c, b)}`}\n\nA calendar invite is attached. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
+      `You're booked for ${fmt(b.start, { weekday: 'long', day: 'numeric', month: 'long' })} at ${fmt(b.start, { hour: '2-digit', minute: '2-digit' })}${withPartner ? `, together with ${b.partnerName}` : ''}.\n${MEET_SHORT}. ${PICKUP}\n\n${b.form ? 'We already have your pre session form, thanks.' : `Before your session, please fill in the pre session form (4 minutes), so we can set up your test: ${formLink(c, b)}`}\n\nThe calendar invite comes in a separate email. Change or cancel for free until ${this.config.changeDeadlineHours} hours before at book.ndure.dk/account.${left > 0 ? `\nYou have ${left} more ${left === 1 ? 'session' : 'sessions'} to book.` : ''}`
     );
     return b;
   }
@@ -572,7 +572,7 @@ export class Labs {
     this.db.emails = this.db.emails.filter((e) => e.key !== `reminder:${b.id}`);
     this.db.done = this.db.done.filter((k) => k !== `reminder:${b.id}`);
     const c = this.customer(b.customerId);
-    this.send(c.email, 'rescheduled', `moved:${b.id}:${def.start}`, `Moved to ${when(def.start)}`, `Your session moved from ${when(old)} to ${when(def.start)}. The calendar invite is updated.`);
+    this.send(c.email, 'rescheduled', `moved:${b.id}:${def.start}`, `Moved to ${when(def.start)}`, `Your session moved from ${when(old)} to ${when(def.start)}. The updated calendar invite comes in a separate email.`);
     return b;
   }
 
@@ -596,7 +596,7 @@ export class Labs {
       'cancelled',
       `cancel:${b.id}`,
       `Cancelled: ${when(b.start)}`,
-      `Your session on ${when(b.start)} is cancelled${by === 'team' ? ' by the NDURE team' : ''}.${b.creditReturned ? ' The session is back in your account.' : ''}`
+      `Your session on ${when(b.start)} is cancelled${by === 'team' ? ' by the NDURE team' : ''}.${b.creditReturned ? ' The session is back in your account.' : ''} A separate email removes it from your calendar.`
     );
     return b;
   }

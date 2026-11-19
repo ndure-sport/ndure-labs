@@ -3,8 +3,8 @@
 // branded HTML email with buttons, a session card and "add to calendar" links.
 
 import type { Booking, Customer, Email } from '../core/types';
-import { fmt } from '../core/time';
-import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, FORM_URL } from '../core/visit';
+import { fmt, when } from '../core/time';
+import { MEET, MEET_SHORT, MEET_MAPS, PICKUP, PREP, BRING, BRING_SENTENCE, BRING_SHORT, PEDALS, SHOWERS, FORM_URL, formLink } from '../core/visit';
 
 const BLUE = '#0008FF';
 const PLACE = MEET;
@@ -44,6 +44,19 @@ export function sessionIcs(b: Booking, opts: { method: 'REQUEST' | 'CANCEL' | 'P
   return lines.map((l) => (l.length <= 74 ? l : l.match(/.{1,73}/g)!.join('\r\n '))).join('\r\n') + '\r\n';
 }
 
+// The separate invite email for the rider: a short text and the calendar file. Everything important is
+// also in the event itself, because accepting can make Outlook hide this email.
+export function riderInvite(b: Booking, c: Pick<Customer, 'name' | 'email' | 'ftp'> | undefined, template: string, appUrl: string): { subject: string; text: string; details: string } {
+  const at = when(b.start);
+  if (template === 'cancelled') {
+    return { subject: `Cancelled: NDURE Labs session, ${at}`, text: `Your NDURE Labs session on ${at} is cancelled. This removes it from your calendar.`, details: 'This session is cancelled.' };
+  }
+  const form = c && !b.form ? ` Before you come: fill in the pre session form (4 minutes): ${formLink(c, b)}` : '';
+  const details = `Your NDURE Labs performance test. ${PICKUP}${form} Bring: ${BRING_SHORT} Change or cancel for free until 24 hours before: ${appUrl}/account`;
+  const subject = `${template === 'rescheduled' ? 'Updated: ' : ''}NDURE Labs session, ${at}`;
+  return { subject, text: `${template === 'rescheduled' ? 'Your session moved. ' : ''}Your NDURE Labs session on ${at}. Accept to keep it in your calendar.\n\n${details}`, details };
+}
+
 function calendarLinks(b: Booking, icsUrl: string) {
   const title = encodeURIComponent('NDURE Labs lactate session');
   const loc = encodeURIComponent(PLACE);
@@ -51,7 +64,7 @@ function calendarLinks(b: Booking, icsUrl: string) {
   const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${stamp(b.start)}/${stamp(b.end)}&location=${loc}&details=${details}`;
   const outlook = (host: string) => `https://${host}/calendar/0/deeplink/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${title}&startdt=${encodeURIComponent(new Date(b.start).toISOString())}&enddt=${encodeURIComponent(new Date(b.end).toISOString())}&location=${loc}&body=${details}`;
   const link = (href: string, label: string) => `<a href="${esc(href)}" style="color:${BLUE};font-weight:600;text-decoration:none;margin-right:16px;white-space:nowrap">${label}</a>`;
-  return `<p style="margin:16px 0 0;font-size:13px;color:#555555">Add to calendar: ${link(outlook('outlook.office.com'), 'Outlook')}${link(outlook('outlook.live.com'), 'Outlook.com')}${link(google, 'Google')}${link(icsUrl, 'Apple / other')}</p>`;
+  return `<p style="margin:16px 0 0;font-size:13px;color:#555555">The calendar invite comes in a separate email. No invite in your calendar? Add it: ${link(outlook('outlook.office.com'), 'Outlook')}${link(outlook('outlook.live.com'), 'Outlook.com')}${link(google, 'Google')}${link(icsUrl, 'Apple / other')}</p>`;
 }
 
 function sessionCard(b: Booking) {
@@ -183,9 +196,9 @@ export type Automation = { template: Email['template']; name: string; when: stri
 export const AUTOMATIONS: Automation[] = [
   { template: 'login_code', name: 'Login code', when: 'When someone asks to log in', to: 'Rider or team member', kind: 'essential' },
   { template: 'payment', name: 'Payment received', when: 'Right after paying', to: 'Rider', kind: 'essential' },
-  { template: 'confirmation', name: 'Booking confirmed, with calendar invite', when: 'Right after booking a session', to: 'Rider', kind: 'essential' },
-  { template: 'rescheduled', name: 'Session moved, calendar updated', when: 'When the rider or team moves a session', to: 'Rider', kind: 'essential' },
-  { template: 'cancelled', name: 'Session cancelled, removed from calendar', when: 'When a session is cancelled, or the picked time filled up during payment', to: 'Rider', kind: 'essential' },
+  { template: 'confirmation', name: 'Booking confirmed (calendar invite follows in its own email)', when: 'Right after booking a session', to: 'Rider', kind: 'essential' },
+  { template: 'rescheduled', name: 'Session moved (updated invite follows in its own email)', when: 'When the rider or team moves a session', to: 'Rider', kind: 'essential' },
+  { template: 'cancelled', name: 'Session cancelled (a separate email removes it from the calendar)', when: 'When a session is cancelled, or the picked time filled up during payment', to: 'Rider', kind: 'essential' },
   { template: 'partner', name: 'Training partner consent', when: 'When a rider brings a partner (not offered on the page now)', to: 'Partner', kind: 'essential' },
   { template: 'reminder', name: 'Session reminder', when: 'The day before the session (26 hours before)', to: 'Rider', kind: 'automatic' },
   { template: 'after', name: 'How was your session?', when: '2 days after the session', to: 'Rider', kind: 'automatic' },
