@@ -643,3 +643,8 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
   .v-foot-nav { align-items: flex-start; }
   .v-foot-bot { margin-top: 32px; gap: 12px; }
 }
+
+/* Balanced lines: headings split evenly, and no single word left alone on the last line. */
+h1, h2, h3, summary, .v-big, .v-foot-h, .v-line, .v-steps b { text-wrap: balance; }
+p, li, .v-card span, .v-steps span, .v-pm, .v-lbl, .v-note { text-wrap: pretty; }
+.bl { display: block; text-wrap: balance; }

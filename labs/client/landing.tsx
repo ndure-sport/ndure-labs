@@ -33,7 +33,7 @@ function Hero() {
       <img className="v-hero-img" src="/img/hero-sensor.jpg" alt="The NDURE lactate sensor strapped to a rider's upper arm during a test" width="1000" height="1777" />
       <div className="v-hero-in">
         <span className="v-tag dark">NDURE Labs · Copenhagen</span>
-        <h1 id="hero-t" className="v-h1">Lactate testing for cyclists.<br />Come back every month.</h1>
+        <h1 id="hero-t" className="v-h1"><span className="bl">Lactate testing for cyclists.</span><span className="bl">Come back every month.</span></h1>
         <ul className="v-chips">
           <li>Cycling only</li>
           <li>In person, in our lab in Copenhagen</li>
@@ -55,7 +55,7 @@ function Why() {
   return (
     <section id="why" className="v-sec" aria-labelledby="why-t">
       <span className="v-tag">Why come back</span>
-      <h2 id="why-t" className="v-h2">Other labs sell you one test.<br />We made coming back cheaper.</h2>
+      <h2 id="why-t" className="v-h2"><span className="bl">Other labs sell you one test.</span><span className="bl">We made coming back cheaper.</span></h2>
       <div className="v-why">
         <div className="v-card grey">
           <span className="v-k">1 · Better data</span>
@@ -84,7 +84,7 @@ function Prices() {
       <div className="v-price-head">
         <div>
           <span className="v-tag white">Prices</span>
-          <h2 id="price-t" className="v-h2">Pick your program.<br />Come back whenever you want.</h2>
+          <h2 id="price-t" className="v-h2"><span className="bl">Pick your program.</span><span className="bl">Come back whenever you want.</span></h2>
         </div>
         <span className="v-s">Valid {CFG.validityMonths} months · pay once · no subscription</span>
       </div>
@@ -192,7 +192,7 @@ function SiteFooter() {
       <div className="v-foot-top">
         <div className="v-foot-l">
           <img src="/img/ndure-logo.png" alt="NDURE" width="64" height="64" />
-          <p className="v-foot-h">Built by athletes,<br />for athletes.</p>
+          <p className="v-foot-h"><span className="bl">Built by athletes,</span><span className="bl">for athletes.</span></p>
           <p className="v-foot-p">Lactate testing for cyclists at our lab in Lyngby. Continuous and blood lactate, a performance report with your LT1, LT2 and zones, and new zones every time you come back.</p>
           <p className="v-foot-d">NDURE Labs is a sports performance test for adults 18+. It is not a medical examination and is not intended to diagnose, prevent, monitor or treat any disease, injury or medical condition.</p>
           <a className="v-btn white" href="#price">Book a session</a>
