@@ -88,17 +88,13 @@ export function Turnstile({ siteKey, onToken }: { siteKey: string | null; onToke
 }
 
 export function Header({ home = false }: { home?: boolean }) {
-  const h = (a: string) => (home ? a : `/${a}`);
   return (
     <header className="hdr">
       <div className="hdr-in">
-        <a href="/" className="brand" aria-label="NDURE Labs, home"><img src="/img/ndure-logo.png" alt="NDURE" width="32" height="32" /><span>LABS</span></a>
+        <a href="/" className="brand" aria-label="NDURE Labs, home"><img src="/img/ndure-logo.png" alt="NDURE" width="32" height="32" /><b>NDURE Labs</b><span>Booking</span></a>
         <nav aria-label="Main">
-          <a className="n" href={h('#back')}>Why come back</a>
-          <a className="n" href={h('#book')}>Prices</a>
-          <a className="n" href={h('#faq')}>FAQ</a>
-          <a className="btn ghost sm" href="/account">{home ? 'Log in' : 'My account'}</a>
-          <a className="btn" href={h('#book')}>Book</a>
+          <a className="hb ghost" href="/account">{home ? 'Log in' : 'My account'}</a>
+          <a className="hb" href={home ? '#price' : '/#price'}>Book a session</a>
         </nav>
       </div>
     </header>

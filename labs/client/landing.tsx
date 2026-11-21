@@ -1,222 +1,214 @@
-// The NDURE Labs page (design N1) with the real booking flow built in.
+// The NDURE Labs page (design: version 1 on the review board) with the real booking flow built in.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { quote, type Slot } from '../core/engine';
 import { DEFAULT_CONFIG, noticeText } from '../core/config';
-import { fmt, when, cphDate } from '../core/time';
+import { fmt, when } from '../core/time';
 import type { ConsentKey } from '../core/types';
 import { MonthPicker } from './picker';
-import { MEET_SHORT, MEET_MAPS, BRING_LINE } from '../core/visit';
 import { api, ApiError, getConfig, kr, Msg, Turnstile, Header, Footer, type Note, type PublicConfig } from './shared';
-import { CONTACT_EMAIL, LINKS, OTHER_LABS_PRICE, JACK, PLAN_INFO, RECOMMENDED, PLAN_ORDER, FLOW, FAQS } from './content';
+import { CONTACT_EMAIL, LINKS, EUR_PER_DKK, PLAN_INFO, RECOMMENDED, PLAN_ORDER, FLOW, FAQS } from './content';
 
 const CFG = DEFAULT_CONFIG;
 const PACKS = PLAN_ORDER.filter((n) => CFG.packs.includes(n));
 const unitFor = (n: number) => quote(CFG, n, false).unit;
 const LOWEST = Math.min(...PACKS.map(unitFor));
-const BIGGEST = Math.max(...PACKS);
 const SINGLE = unitFor(1);
 const introHref = LINKS.introCall || `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Free 15 min call about NDURE Labs')}`;
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const clock = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
 
 
-// Reveal sections as they come into view, and count numbers up once.
-function useReveal() {
-  useEffect(() => {
-    const root = document.documentElement;
-    if (!('IntersectionObserver' in window)) return;
-    root.classList.add('js');
-    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const count = (el: HTMLElement) => {
-      const to = Number(el.dataset.count);
-      if (calm || !to) { el.textContent = to.toLocaleString('en-US'); return; }
-      const t0 = performance.now();
-      const tick = (t: number) => {
-        const p = Math.min(1, (t - t0) / 1400);
-        el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))).toLocaleString('en-US');
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    };
-    const io = new IntersectionObserver((list) => {
-      for (const e of list) {
-        if (!e.isIntersecting) continue;
-        const el = e.target as HTMLElement;
-        el.classList.add('seen');
-        el.querySelectorAll<HTMLElement>('[data-count]').forEach(count);
-        io.unobserve(el);
-      }
-    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
-    document.querySelectorAll('.rv').forEach((el) => io.observe(el));
-    // Safety net: never leave anything hidden, even if the observer misses it.
-    const t = setTimeout(() => document.querySelectorAll('.rv:not(.seen)').forEach((el) => {
-      const r = el.getBoundingClientRect();
-      if (r.top < innerHeight) el.classList.add('seen');
-    }), 2500);
-    return () => { io.disconnect(); clearTimeout(t); };
-  }, []);
-}
-
-const Icon = {
-  bike: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5" /><circle cx="18.5" cy="17.5" r="3.5" /><path d="M15 6h2l3 11.5M5.5 17.5 9 9h7l-4.5 8.5H5.5M9 9 7.5 6H6" /></svg>,
-  pin: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>,
-  info: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
+const bookHref = (n: number) => {
+  const src = new URLSearchParams(location.search).get('src');
+  return `/book?qty=${n}${src ? `&src=${encodeURIComponent(src)}` : ''}`;
 };
 
-// ---------------- sections ----------------
-function Hero({ firstFree }: { firstFree: string | null | undefined }) {
+const eur = (n: number) => `about €${Math.round(n * EUR_PER_DKK)}`;
+
+// ---------------- sections (design: version 1) ----------------
+function Hero() {
   return (
-    <section className="band hero" aria-labelledby="hero-t">
-      <div className="split">
-        <div className="txt stack g24">
-          <p className="eb in1">NDURE Labs · Lactate testing for cyclists</p>
-          <h1 id="hero-t" className="h1 in2">Train at the<br /><span className="hl">right intensity.</span></h1>
-          <p className="lead in3">A performance test for cyclists in our Copenhagen lab. You ride our bike, we measure your lactate, and you learn exactly how hard to train.</p>
-          <div className="row in4">
-            <a className="btn" href="#book">Book your session</a>
-            <span className="avail" aria-live="polite">
-              {firstFree ? <><span className="dot" aria-hidden="true" />First free date: {longDay(firstFree)}</> : firstFree === null ? `From ${kr(LOWEST)} a session` : null}
-            </span>
+    <section className="v-hero" aria-labelledby="hero-t">
+      <img className="v-hero-img" src="/img/hero-sensor.jpg" alt="The NDURE lactate sensor strapped to a rider's upper arm during a test" width="1000" height="1777" />
+      <div className="v-hero-in">
+        <span className="v-tag dark">NDURE Labs · Copenhagen</span>
+        <h1 id="hero-t" className="v-h1">Lactate testing for cyclists.<br />Come back every month.</h1>
+        <ul className="v-chips">
+          <li>Cycling only</li>
+          <li>In person, in our lab in Copenhagen</li>
+          <li>A test, not a device: no sensor to take home</li>
+        </ul>
+        <div className="v-hero-foot">
+          <p>Know exactly how hard to train. Two hours in our lab gives you your LT1, LT2 and training zones, and every visit keeps them up to date as you get fitter.</p>
+          <div className="v-hero-cta">
+            <span>From <b>{kr(LOWEST)}</b> a session</span>
+            <a className="v-btn white lg" href="#price">Book your session</a>
           </div>
-          <ul className="chips in4">
-            <li>{Icon.bike}Cycling only</li>
-            <li>{Icon.pin}In person at our lab in Copenhagen</li>
-            <li>{Icon.info}A test, not a device: no sensor to take home</li>
-          </ul>
-        </div>
-        <div className="pic stack g12 in3">
-          <div className="photo"><img src="/img/labs-session.jpg" alt="Anna Serop runs a lactate test on a rider in the NDURE lab" width="960" height="1200" /></div>
-          <p className="lac"><b>What is lactate?</b> A substance in your blood that rises as you ride harder. Where it starts to rise shows your easy, steady and hard zones.</p>
         </div>
       </div>
     </section>
   );
 }
 
-function Vision() {
-  const rows: [string, string, string][] = [
-    ['Week 1', 'You test on a tired day. That day becomes your plan.', 'You test and get your first zones.'],
-    ['Week 6', 'You got fitter. Your zones did not.', 'Check in. New zones that match your fitness.'],
-    ['Week 12', 'You train on old numbers, and progress stalls.', 'Check in. See what worked, adjust, keep going.']
+function Why() {
+  return (
+    <section id="why" className="v-sec" aria-labelledby="why-t">
+      <span className="v-tag">Why come back</span>
+      <h2 id="why-t" className="v-h2">Other labs sell you one test.<br />We made coming back cheaper.</h2>
+      <div className="v-why">
+        <div className="v-card grey">
+          <span className="v-k">1 · Better data</span>
+          <b className="v-big">Our sensor measures your lactate continuously.</b>
+          <span className="v-s">Not just a few drops of blood. You see the whole curve, so your LT1 and LT2 are more precise.</span>
+        </div>
+        <div className="v-card black">
+          <span className="v-k">2 · Continuous improvement</span>
+          <div>
+            <span className="v-lbl">NDURE Labs</span>
+            <span className="v-num">{kr(LOWEST)}</span>
+            <span className="v-lbl">a session, every few weeks · {eur(LOWEST)}</span>
+          </div>
+          <p className="v-line">Your zones keep moving as you get fitter. So we made it affordable to measure your lactate every few weeks.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const SKIN: Record<number, string> = { 1: 'white', 3: 'black', 6: 'cream' };
+
+function Prices() {
+  return (
+    <section id="price" className="v-sec grey" aria-labelledby="price-t">
+      <div className="v-price-head">
+        <div>
+          <span className="v-tag white">Prices</span>
+          <h2 id="price-t" className="v-h2">Pick your program.<br />Come back whenever you want.</h2>
+        </div>
+        <span className="v-s">Valid {CFG.validityMonths} months · pay once · no subscription</span>
+      </div>
+      <div className="v-plans">
+        {PACKS.map((n) => {
+          const p = PLAN_INFO[n];
+          const q = quote(CFG, n, false);
+          return (
+            <div key={n} className={`v-plan ${SKIN[n] ?? 'white'}`}>
+              <span className="v-ptag">{p.tag}</span>
+              <b className="v-pname">{p.tier}</b>
+              <span className="v-pm">{n === 1 ? '1 session' : `${n} sessions · ${kr(q.total)}`}</span>
+              <span className="v-pprice">{kr(q.unit)}</span>
+              <span className="v-pm">{n === 1 ? 'for one session' : 'per session'} · {eur(q.unit)}</span>
+              <ul>
+                {p.inc.map((t) => <li key={t}><span aria-hidden="true">✓</span>{t}</li>)}
+                {(p.not ?? []).map((t) => <li key={t} className="no"><span aria-hidden="true">✕</span>{t}</li>)}
+              </ul>
+              <a className="v-pbtn" href={bookHref(n)}>Choose {p.tier}</a>
+            </div>
+          );
+        })}
+      </div>
+      <p className="v-note">Already have sessions? <a href="/account">Log in</a>. Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a>.</p>
+    </section>
+  );
+}
+
+function Session() {
+  return (
+    <section id="session" className="v-sec" aria-labelledby="session-t">
+      <span className="v-tag">The session</span>
+      <h2 id="session-t" className="v-h2">How NDURE Labs works.</h2>
+      <ol className="v-steps">
+        {FLOW.map(([t, d], i) => (
+          <li key={t}><span className="v-n">{String(i + 1).padStart(2, '0')}</span><b>{t}</b><span>{d}</span></li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function Anna() {
+  return (
+    <section className="v-sec black tall" aria-labelledby="anna-t">
+      <div className="v-anna">
+        <div className="v-video">
+          <img src="/img/anna-fit.jpg" alt={LINKS.annaVideo ? '' : 'Anna fits the NDURE lactate sensor on a rider'} aria-hidden={LINKS.annaVideo ? true : undefined} loading="lazy" width="1000" height="1777" />
+          {LINKS.annaVideo && (
+            <a className="v-play" href={LINKS.annaVideo} target="_blank" rel="noopener noreferrer" aria-label="Watch Anna explain NDURE Labs">
+              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#000" /></svg>
+            </a>
+          )}
+        </div>
+        <div className="v-anna-txt">
+          <span className="v-tag dark">Your tester</span>
+          <h2 id="anna-t" className="v-h3">Meet our Performance Physiologist, Anna Serop.</h2>
+          <p>Anna is the NDURE performance physiologist. She runs every session in the lab, sets you up on the bike and the sensor, and takes you through your report so you know how to train.</p>
+          <p>When you come back, you see her again. She knows your history and what changed since last time.</p>
+          <a className="v-btn white" href="#price">Book a session with Anna</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Lactate() {
+  return (
+    <section className="v-sec tall" aria-labelledby="lac-t">
+      <span className="v-tag">Good to know</span>
+      <h2 id="lac-t" className="v-h3 big">Lactate, LT1 and LT2.</h2>
+      <div className="v-lac">
+        <div className="v-card grey sm wide"><b>What is lactate?</b><span>A substance your muscles make when you work. The harder you ride, the more of it ends up in your blood. How it rises tells us how your body handles effort.</span></div>
+        <div className="v-card line sm"><b>LT1</b><span>Where lactate first starts to rise. Below it is your easy, all day endurance riding.</span></div>
+        <div className="v-card black sm"><b>LT2</b><span>Where lactate shoots up. Roughly the hardest pace you can hold for a long effort.</span></div>
+      </div>
+    </section>
+  );
+}
+
+function Faq() {
+  return (
+    <section id="faq" className="v-sec flush" aria-labelledby="faq-t">
+      <div className="v-faq">
+        <div>
+          <span className="v-tag">FAQ</span>
+          <h2 id="faq-t" className="v-h3 big">Questions.</h2>
+          <p className="v-s" style={{ marginTop: 12 }}>Something else? <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></p>
+        </div>
+        <div className="v-qs">{FAQS.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
+      </div>
+    </section>
+  );
+}
+
+function SiteFooter() {
+  const ext = { target: '_blank', rel: 'noopener noreferrer' };
+  const social: [string, string, React.ReactNode][] = [
+    [LINKS.youtube, 'NDURE on YouTube', <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10l8-5z" fill="#000" /></svg>],
+    [LINKS.linkedin, 'NDURE on LinkedIn', <b>in</b>],
+    [LINKS.instagram, 'NDURE on Instagram', <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="5" /><circle cx="12" cy="12" r="3.5" /></svg>]
   ];
   return (
-    <section id="back" className="band black rv" aria-labelledby="vision-t">
-      <div className="stack g56">
-        <div className="split" style={{ alignItems: 'flex-end', gap: '20px 56px' }}>
-          <div className="stack g16" style={{ flex: '1 1 520px' }}>
-            <p className="eb w">Our vision</p>
-            <h2 id="vision-t" className="h2" style={{ fontSize: 'clamp(30px, 3.6vw, 48px)', lineHeight: 1.18 }}>Other labs sell you one test.<br /><span className="hl">We sell you progress.</span></h2>
-          </div>
-          <div className="stack g12" style={{ flex: '1 1 340px' }}>
-            <p className="p" style={{ color: '#BBB' }}>A lab test is a snapshot of one day. Build a whole plan on it and you train on old numbers for months.</p>
-            <p className="p" style={{ color: '#fff' }}>We think testing should be a habit: short, affordable, every few weeks. So your training adapts as you improve.</p>
-          </div>
+    <footer className="v-foot">
+      <div className="v-foot-top">
+        <div className="v-foot-l">
+          <img src="/img/ndure-logo.png" alt="NDURE" width="64" height="64" />
+          <p className="v-foot-h">Built by athletes,<br />for athletes.</p>
+          <p className="v-foot-p">Lactate testing for cyclists at our lab in Lyngby. Continuous and blood lactate, a performance report with your LT1, LT2 and zones, and new zones every time you come back.</p>
+          <p className="v-foot-d">NDURE Labs is a sports performance test for adults 18+. It is not a medical examination and is not intended to diagnose, prevent, monitor or treat any disease, injury or medical condition.</p>
+          <a className="v-btn white" href="#price">Book a session</a>
+          {social.some(([u]) => u) && <div className="v-social">{social.filter(([u]) => u).map(([u, l, i]) => <a key={l} href={u} aria-label={l} {...ext}>{i}</a>)}</div>}
         </div>
-        <div className="cmp">
-          <div className="old">
-            <p className="k">THE USUAL WAY: ONE TEST</p>
-            <p className="s" style={{ color: '#666' }}>How most labs in Copenhagen do it</p>
-            {rows.map(([w, a]) => <div className="r" key={w}><span className="w">{w}</span><span className="t">{a}</span></div>)}
-            {OTHER_LABS_PRICE > 0 && (
-              <div className="r"><span className="w" style={{ paddingTop: 14 }}>Price</span>
-                <span className="stack g8"><span className="strike">{kr(OTHER_LABS_PRICE)}<i aria-hidden="true" /></span><span style={{ fontSize: 15 }}>for one test</span></span>
-              </div>
-            )}
-          </div>
-          <div className="us">
-            <p className="k">OUR LAB</p>
-            <p className="s" style={{ color: '#BBB' }}>Built for coming back</p>
-            {rows.map(([w, , b]) => <div className="r" key={w}><span className="w">{w}</span><span className="t">{b}</span></div>)}
-            <div className="r last"><span className="w" style={{ paddingTop: 14 }}>Price</span>
-              <span className="stack g8"><span className="big"><span data-count={LOWEST}>{LOWEST}</span> kr</span><span style={{ fontSize: 15 }}>a session with the {BIGGEST} session plan</span></span>
-            </div>
-            <div style={{ marginTop: 18 }}><a className="btn white" href="#book">Book now for {kr(LOWEST)} a session</a></div>
-          </div>
-        </div>
+        <nav aria-label="Footer" className="v-foot-nav">
+          {LINKS.home && <a href={LINKS.home}>Home</a>}
+          {LINKS.ambassador && <a href={LINKS.ambassador} {...ext}>Become an Ambassador</a>}
+          {LINKS.careers && <a href={LINKS.careers} {...ext}>Careers</a>}
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms and Conditions</a>
+          <a href="/health-check">Health check</a>
+        </nav>
       </div>
-    </section>
-  );
-}
-
-function Process() {
-  return (
-    <section id="how" className="band grey rv" aria-labelledby="how-t">
-      <div className="stack g32">
-        <div className="row spread" style={{ alignItems: 'flex-end', gap: 16 }}>
-          <div className="stack g12"><p className="eb">The process</p><h2 id="how-t" className="h2">From booking to better training.</h2></div>
-          <p className="ab"><b style={{ color: '#000' }}>A</b> Today<i aria-hidden="true" /><b style={{ color: 'var(--blue)' }}>B</b> Training in your real zones</p>
-        </div>
-        <div className="flow">
-          <div className="bar" aria-hidden="true" />
-          <ol>{FLOW.map(([t, d], i) => <li key={t}><span className="n">{i + 1}</span><b>{t}</b><span className="d">{d}</span></li>)}</ol>
-        </div>
-      </div>
-      <div className="anna split">
-        <div className="txt stack g12">
-          <p className="eb">Steps 3 and 4: you ride with Anna</p>
-          <h2 className="h2" style={{ fontSize: 'clamp(30px, 3.4vw, 44px)' }}>Meet Anna Serop.</h2>
-          <p className="p">Anna is the NDURE performance scientist. She runs every session in the lab and is an expert in lactate and cycling performance.</p>
-        </div>
-        <div className="photo"><img src="/img/labs-session.jpg" alt="Anna Serop in the NDURE lab" loading="lazy" width="960" height="1200" /></div>
-      </div>
-    </section>
-  );
-}
-
-function Practical() {
-  return (
-    <section id="faq" className="band rv" aria-labelledby="faq-t">
-      <div className="stack g56">
-        <div className="kv">
-          <div><span>WHERE</span><a href={MEET_MAPS} target="_blank" rel="noopener noreferrer">{MEET_SHORT}, Kongens Lyngby</a></div>
-          <div><span>WHEN</span>Tue to Thu, daytime. About 2 hours.</div>
-          <div><span>BRING</span>{BRING_LINE}</div>
-          <div><span>FOR</span>Any cyclist who rides regularly</div>
-        </div>
-        <div className="stack g16">
-          <h2 id="faq-t" className="h3" style={{ fontSize: 24 }}>Questions</h2>
-          <div className="faq">{FAQS.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Jack() {
-  if (!JACK.approved) return null;
-  return (
-    <section id="jack" className="band black rv" aria-labelledby="jack-t">
-      <div className="stack g16" style={{ maxWidth: 760 }}>
-        <p className="eb w">NDURE athlete</p>
-        <h2 id="jack-t" className="h2" style={{ fontSize: 'clamp(38px, 5vw, 68px)' }}>Train like {JACK.name}.</h2>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 500, letterSpacing: '.04em', color: '#999' }}>{JACK.fact.toUpperCase()}</p>
-        <p className="p" style={{ color: '#BBB' }}>{JACK.text}</p>
-        <blockquote className="quote" style={{ margin: 0 }}>“{JACK.quote}”</blockquote>
-        {LINKS.jackStory && <a href={LINKS.jackStory} target="_blank" rel="noopener noreferrer" style={{ color: '#fff' }}>Watch Jack's story</a>}
-      </div>
-    </section>
-  );
-}
-
-function Close() {
-  return (
-    <section className="band black rv" aria-labelledby="close-t">
-      <div className="stack g24" style={{ alignItems: 'flex-start' }}>
-        <h2 id="close-t" className="close-h">Stop guessing.<br /><span className="hl">Keep improving.</span></h2>
-        <div className="row"><a className="btn white" href="#book">Book your session</a><span style={{ color: '#999', fontSize: 15 }}>From {kr(LOWEST)} a session</span></div>
-      </div>
-      <div id="contact" className="contact">
-        <div className="stack g8">
-          <p style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Questions first?</p>
-          <p style={{ margin: 0, fontSize: 15, color: '#999' }}>Not sure which option fits you, or want to book for a group? Talk to us and we help you plan your first session.</p>
-        </div>
-        <div className="row">
-          <a className="btn white" href={introHref} {...(LINKS.introCall ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>Book a free 15 min call</a>
-          <a className="btn ghost dark" href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('NDURE Labs question')}`}>Email {CONTACT_EMAIL}</a>
-        </div>
-      </div>
-    </section>
+      <div className="v-foot-bot"><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a><span>NDURE ApS · CVR: 45530701<br />Diplomvej 376,<br />2800 Kongens Lyngby</span></div>
+    </footer>
   );
 }
 
@@ -256,33 +248,6 @@ function Plans({ qty, onPick, onChoose }: { qty: number; onPick: (n: number) => 
   );
 }
 
-const bookHref = (n: number) => {
-  const src = new URLSearchParams(location.search).get('src');
-  return `/book?qty=${n}${src ? `&src=${encodeURIComponent(src)}` : ''}`;
-};
-
-// Prices on the Labs page: the packs, each opens the booking page.
-function Prices() {
-  const [qty, setQty] = useState(RECOMMENDED);
-  return (
-    <section id="book" className="band tight" aria-labelledby="book-t">
-      <div className="stack g24">
-        <div className="stack g12">
-          <p className="eb">Prices</p>
-          <h2 id="book-t" className="h2">Choose your sessions.</h2>
-        </div>
-        <div className="book">
-          <div className="steps">
-            <span />
-            <a href="/account" style={{ fontSize: 14 }}>Already have sessions? Log in</a>
-          </div>
-          <Plans qty={qty} onPick={setQty} onChoose={(n) => location.assign(bookHref(n))} />
-        </div>
-        <p className="note-s" style={{ textAlign: 'center' }}>Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a> for team pricing. Questions first? <a href={introHref}>Book a free 15 minute call</a>.</p>
-      </div>
-    </section>
-  );
-}
 
 function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slotError: string | null; reloadSlots: () => void }) {
   const params = useMemo(() => new URLSearchParams(location.search), []);
@@ -495,30 +460,21 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
 
 // ---------------- the page ----------------
 export function Landing() {
-  const [slots, setSlots] = useState<Slot[] | null>(null);
-  const [slotError, setSlotError] = useState<string | null>(null);
-  const loadSlots = useCallback(() => {
-    setSlotError(null);
-    setSlots(null);
-    api<{ slots: Slot[] }>('/api/slots?need=1').then((d) => setSlots(d.slots)).catch((e) => setSlotError((e as Error).message));
-  }, []);
-  useEffect(loadSlots, [loadSlots]);
-  useReveal();
-  const firstFree = slotError ? null : slots === null ? undefined : slots[0]?.start ?? null;
+  useEffect(() => { document.title = 'NDURE Labs · Lactate testing for cyclists in Copenhagen'; }, []);
   return (
     <>
-      <a className="skip" href="#book">Skip to booking</a>
+      <a className="skip" href="#price">Skip to prices</a>
       <Header home />
       <main>
-        <Hero firstFree={firstFree} />
-        <Vision />
+        <Hero />
+        <Why />
         <Prices />
-        <Process />
-        <Practical />
-        <Jack />
-        <Close />
+        <Session />
+        <Anna />
+        <Lactate />
+        <Faq />
       </main>
-      <Footer />
+      <SiteFooter />
     </>
   );
 }
