@@ -114,7 +114,6 @@ export function tierUnit(config: Config, n: number): number {
   return unit;
 }
 
-export type TopUpOffer = { parentId: string; has: number; max: number; expiresAt: string; options: { n: number; price: number; unit: number }[] };
 
 type Now = () => number;
 
@@ -408,49 +407,6 @@ export class Labs {
         `A payment arrived after the seat hold ran out: ${c.name} (${c.email}), ${this.money(o.total)}, order ${o.id}. ${o.firstStart ? (o.firstStatus === 'booked' ? 'The picked session was still free and is booked.' : 'The picked session was gone, the rider was asked to pick another time.') : 'The sessions are in the account.'}`
       );
     }
-    return o;
-  }
-
-  // ---------- adding sessions to a pack ----------
-  // A rider can add sessions to their latest pack and pays the difference to what the bigger pack
-  // would have cost in total. A Snapshot (499 kr) plus 2 costs 806 kr: exactly the Progress price of 1,305 kr.
-  // Added sessions expire together with the pack. At most maxQty sessions per pack.
-  topUpOffer(customerId: string): TopUpOffer | null {
-    const now = this.now();
-    const parent = this.db.orders
-      .filter((o) => o.customerId === customerId && o.status === 'paid' && !o.free && !o.parentId && o.expiresAt && Date.parse(o.expiresAt) > now)
-      .sort((a, b) => Date.parse(b.paidAt ?? b.createdAt) - Date.parse(a.paidAt ?? a.createdAt))[0];
-    if (!parent) return null;
-    const extra = this.db.orders.filter((o) => o.parentId === parent.id && o.status === 'paid');
-    // Only for a Snapshot (1 session), once that session is done: right after paying is too soon.
-    if (parent.qty !== 1 || extra.length > 0) return null;
-    const done = this.db.bookings.some((b) => b.orderId === parent.id && (b.status === 'attended' || (b.status !== 'cancelled' && Date.parse(b.end) <= now)));
-    if (!done) return null;
-    const has = parent.qty + extra.reduce((n, o) => n + o.qty, 0);
-    const paid = parent.total - (parent.partner ? this.config.partnerPrice : 0) + extra.reduce((n, o) => n + o.total, 0);
-    const max = this.config.maxQty - has;
-    if (max < 1) return null;
-    const options = Array.from({ length: max }, (_, i) => {
-      const n = i + 1;
-      const price = Math.max(0, tierUnit(this.config, has + n) * (has + n) - paid);
-      return { n, price, unit: Math.round((price / n) * 100) / 100 };
-    });
-    return { parentId: parent.id, has, max, expiresAt: parent.expiresAt!, options };
-  }
-
-  topUp(customerId: string, qty: number): Order {
-    const offer = this.topUpOffer(customerId);
-    if (!offer) throw new LabsError('Adding sessions is not possible right now. Buy a new pack on the Labs page, or email contact@ndure.dk.', 'topup');
-    const n = Number(qty);
-    const opt = offer.options.find((x) => x.n === n);
-    if (!opt) throw new LabsError(`You can add 1 to ${offer.max} sessions.`, 'qty');
-    if (opt.price <= 0) throw new LabsError('Email contact@ndure.dk to add these sessions.', 'topup');
-    const o: Order = {
-      id: this.id('o'), customerId, status: 'pending', qty: n, unit: opt.unit, total: opt.price, remaining: 0,
-      partner: false, partnerName: null, partnerEmail: null, partnerUsed: false, free: false, src: 'account',
-      createdAt: this.iso(), paidAt: null, expiresAt: null, firstStart: null, firstStatus: 'none', newCustomer: false, parentId: offer.parentId
-    };
-    this.db.orders.push(o);
     return o;
   }
 
@@ -875,7 +831,6 @@ export class Labs {
       upcoming: upcoming.map((b) => ({ ...b, changeable: Date.parse(b.start) - now >= hours(this.config.changeDeadlineHours) })),
       past,
       nextDue,
-      topUp: this.topUpOffer(customerId),
       orders: this.db.orders.filter((o) => o.customerId === customerId && o.status !== 'pending' && o.status !== 'expired')
     };
   }

@@ -511,37 +511,6 @@ test('emails: more than 40 automatic emails in one run pauses them all and alert
   assert.ok(labs.db.emails.some((e) => e.template === 'confirmation'));
 });
 
-test('adding sessions: only for a Snapshot, after that session; pay the difference, expire with the pack', () => {
-  const { labs, tick } = setup();
-  const start = labs.slots()[0].start;
-  const snap = labs.checkout(rider('s@x.dk', { qty: 1, start }));
-  labs.paid(snap.id);
-  const c = snap.customerId;
-  assert.equal(labs.topUpOffer(c), null, 'not right after paying');
-  tick(days(30)); // well after the session
-  const offer = labs.topUpOffer(c)!;
-  assert.equal(offer.has, 1);
-  assert.equal(offer.max, 5);
-  assert.equal(offer.options.find((o) => o.n === 2)!.price, 806); // 1,305 for 3 minus 499 paid
-  assert.equal(offer.options.find((o) => o.n === 1)!.price, 499);
-  assert.equal(offer.options.find((o) => o.n === 5)!.price, 6 * 375 - 499);
-  assert.throws(() => labs.topUp(c, 6), /add 1 to 5/);
-  assert.throws(() => labs.topUp(c, 1.5), /add 1 to 5/);
-  const add = labs.topUp(c, 2);
-  assert.equal(add.total, 806);
-  assert.equal(labs.balance(c).total, 0); // not before paying
-  labs.paid(add.id);
-  assert.equal(labs.balance(c).total, 2);
-  assert.equal(labs.order(add.id).expiresAt, labs.order(snap.id).expiresAt);
-  assert.equal(labs.topUpOffer(c), null, 'one upgrade, then the account shows Book a session');
-  // Progress and Season packs never see it.
-  const p = labs.checkout(rider('p@x.dk', { qty: 3, later: true }));
-  labs.paid(p.id);
-  assert.equal(labs.topUpOffer(p.customerId), null);
-  // Free sessions from the team are not a pack to add to.
-  const g = labs.giveSessions({ email: 'gift@x.dk', name: 'Gift', qty: 1 });
-  assert.equal(labs.topUpOffer(g.customerId), null);
-});
 
 test('emails: the off list in the config stops those automatic emails', () => {
   const { labs, tick } = setup({ ...TEST_CONFIG, emails: { ...TEST_CONFIG.emails, off: ['after', 'reminder'] } });
