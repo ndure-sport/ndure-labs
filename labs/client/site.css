@@ -642,6 +642,18 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
   .v-foot-top, .v-foot-bot { grid-template-columns: 1fr; gap: 28px; }
   .v-foot-nav { align-items: flex-start; }
   .v-foot-bot { margin-top: 32px; gap: 12px; }
+  /* Smaller type on phones */
+  .v-h1 { font-size: 34px; }
+  .v-h2 { font-size: 28px; margin-bottom: 22px; }
+  .v-h3, .v-h3.big { font-size: 26px; }
+  .v-big { font-size: 20px; }
+  .v-num { font-size: 40px; }
+  .v-pprice { font-size: 40px; }
+  .v-pname { font-size: 18px; }
+  .v-line { font-size: 16px; }
+  .v-foot-h { font-size: 28px; }
+  .v-hero-foot p { font-size: 14px; }
+  .v-plan ul, .v-anna-txt p, .v-qs details, .v-card.grey > span:last-child { font-size: 13px; }
 }
 
 /* Balanced lines: headings split evenly, and no single word left alone on the last line. */
