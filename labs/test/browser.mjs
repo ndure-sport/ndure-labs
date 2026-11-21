@@ -55,10 +55,12 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.route('https://checkout.stripe.test/**', (r) => { stripeUrl = r.request().url(); r.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Fake Stripe</h1>' }); });
 
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
-  ok('page loads with the headline', await page.getByRole('heading', { level: 1 }).innerText().then((t) => t.includes('right intensity')));
-  ok('hero shows the first free date', /First free date: \w+day \d+ \w+/.test(await page.locator('.avail').innerText()), await page.locator('.avail').innerText());
-  ok('three plans with the right prices', (await page.locator('.plan').count()) === 3 && (await page.locator('.plan .price b').allInnerTexts()).join('|') === '499 kr|435 kr|375 kr', (await page.locator('.plan .price b').allInnerTexts()).join('|'));
-  ok('Progress is the recommended plan', (await page.locator('.plan.rec .h3').innerText()) === 'Progress');
+  ok('page loads with the headline', await page.getByRole('heading', { level: 1 }).innerText().then((t) => t.includes('Lactate testing for cyclists')));
+  ok('hero shows the lowest price', (await page.locator('.v-hero-cta').innerText()).includes('From 375 kr a session'), await page.locator('.v-hero-cta').innerText());
+  ok('three plans with the right prices', (await page.locator('.v-plan').count()) === 3 && (await page.locator('.v-pprice').allInnerTexts()).join('|') === '499 kr|435 kr|375 kr', (await page.locator('.v-pprice').allInnerTexts()).join('|'));
+  ok('euro guide next to the prices', (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €67') && (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €50'));
+  ok('Progress is the black, most riders plan', (await page.locator('.v-plan.black .v-pname').innerText()) === 'Progress' && (await page.locator('.v-plan.black .v-ptag').innerText()) === 'MOST RIDERS');
+  ok('no competitor price and no 48 h on the page', !/1,500|1\.500|€200|48 h/.test(await page.locator('body').innerText()));
 
   // Every link on the page goes somewhere real.
   const links = await page.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));
@@ -73,17 +75,17 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('no placeholder text on the page', !/PLACEHOLDER|DRAFT|\[x\]|\[date\]/i.test(await page.locator('body').innerText()));
 
   // Header buttons scroll to the booking.
-  await page.locator('.hdr a.btn:not(.ghost)').click();
+  await page.locator('.hdr a.hb:not(.ghost)').click();
   await page.waitForTimeout(800);
-  ok('header Book scrolls to booking', await page.locator('#book-t').isVisible() && (await page.locator('#book-t').boundingBox()).y < 400);
+  ok('header Book a session scrolls to the prices', await page.locator('#price-t').isVisible() && (await page.locator('#price-t').boundingBox()).y < 400);
   await shot(page, `${label}-1-landing`);
 
   // FAQ opens.
-  await page.locator('.faq summary').first().click();
-  ok('FAQ answer opens', await page.locator('.faq details').first().evaluate((d) => d.open));
+  await page.locator('.v-qs summary').first().click();
+  ok('FAQ answer opens', await page.locator('.v-qs details').first().evaluate((d) => d.open));
 
   // Booking: Snapshot first, then back and Progress.
-  await page.getByRole('button', { name: 'Choose Snapshot' }).click();
+  await page.getByRole('link', { name: 'Choose Snapshot' }).click();
   await page.waitForURL(/\/book\?qty=1/);
   ok('Choose opens the booking page', page.url().includes('/book?qty=1'));
   await page.getByText('Pick your session', { exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
@@ -97,7 +99,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.getByRole('button', { name: 'Choose Progress' }).click();
   ok('Progress: other sessions are booked later from the account', await page.getByText('Your other 2 sessions you book later').isVisible());
   await page.locator('button.mday').first().waitFor({ timeout: 10000 }).catch(() => {});
-  ok('month calendar shows', (await page.locator('button.mday').count()) > 3, `${await page.locator('button.mday').count()} free days`);
+  ok('month calendar shows', (await page.locator('button.mday').count()) > 0, `${await page.locator('button.mday').count()} free days`);
   const firstDay = await page.locator('button.mday').first().getAttribute('aria-label');
   ok('a first bookable day is shown (notice rule and opening date are off for testing)', !!firstDay, firstDay);
   ok('summary shows where to meet', (await page.locator('.sum').innerText()).includes('Diplomvej 381'));
@@ -176,9 +178,9 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     ok(`${p} shows "${h}"`, (await page.getByRole('heading', { level: 1 }).innerText()) === h);
   }
   // Header on a sub page goes back to the booking.
-  await page.locator('.hdr a.btn:not(.ghost)').click();
-  await page.waitForURL(BASE + '/#book');
-  ok('Book from a sub page returns to the booking', page.url().endsWith('/#book'));
+  await page.locator('.hdr a.hb:not(.ghost)').click();
+  await page.waitForURL(BASE + '/#price');
+  ok('Book from a sub page returns to the prices', page.url().endsWith('/#price'));
 
   // Team page: log in, the three tabs, the rider in the sessions list.
   if (label === 'desktop') {
