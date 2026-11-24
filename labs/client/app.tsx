@@ -141,14 +141,12 @@ function AfterPayment({ orderId, onLoggedIn }: { orderId: string; onLoggedIn: ()
 
 // ---------------- rider account ----------------
 type Upcoming = Booking & { changeable: boolean; icsUrl: string; formDone?: boolean };
-type TopUp = { parentId: string; has: number; max: number; expiresAt: string; options: { n: number; price: number; unit: number }[] } | null;
 type AccountData = {
   customer: Customer;
   balance: { total: number; orders: Order[] };
   upcoming: Upcoming[];
   past: Booking[];
   nextDue: string | null;
-  topUp: TopUp;
   pendingOrder: { status: string; firstStatus: string; firstStart: string | null } | null;
 };
 
@@ -193,28 +191,6 @@ function SessionCard({ b, c, busy, onMove, onCancel, confirming, onConfirm, onKe
         : <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so we can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>}
       <CalendarLinks b={b} />
       <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
-    </div>
-  );
-}
-
-function AddSessions({ t, busy, onBuy }: { t: NonNullable<TopUp>; busy: boolean; onBuy: (n: number) => void }) {
-  const snapshot = t.has === 1 && t.max >= 2;
-  const [n, setN] = useState(snapshot ? 2 : 1);
-  const opt = t.options.find((o) => o.n === n) ?? t.options[0];
-  return (
-    <div className="stack g12">
-      <h3 style={{ margin: 0 }}>{snapshot ? 'Upgrade to Progress' : 'Add sessions'}</h3>
-      {snapshot && <p className="small" style={{ margin: 0 }}>One test is a snapshot. The value is in coming back: add 2 sessions and pay the Progress price, {kr(opt.unit)} a session.</p>}
-      <p className="small muted" style={{ margin: 0 }}>You pay the same as if you had bought {t.has + n} sessions in one go. Extra sessions are valid until {fmt(t.expiresAt, { day: 'numeric', month: 'short', year: 'numeric' })}.</p>
-      <div className="row spread" style={{ alignItems: 'center' }}>
-        <span className="stepper">
-          <button className="stp" aria-label="One less" disabled={n <= 1} onClick={() => setN(n - 1)}>−</button>
-          <b aria-live="polite">{n}</b>
-          <button className="stp" aria-label="One more" disabled={n >= t.max} onClick={() => setN(n + 1)}>+</button>
-        </span>
-        <span style={{ textAlign: 'right' }}><b style={{ fontSize: 20 }}>{kr(opt.price)}</b><br /><span className="small muted">{kr(opt.unit)} per session</span></span>
-      </div>
-      <button className="btn full" disabled={busy} onClick={() => onBuy(n)}>{busy ? 'Opening payment…' : `Add ${n} ${n === 1 ? 'session' : 'sessions'}, pay ${kr(opt.price)}`}</button>
     </div>
   );
 }
@@ -276,17 +252,7 @@ function Account() {
     }
     setBusy(false);
   }
-  async function buy(n: number) {
-    setBusy(true);
-    setNote(null);
-    try {
-      const d = await api<{ url: string }>('/api/me/topup', { qty: n });
-      location.assign(d.url);
-    } catch (e) {
-      setNote({ kind: 'err', text: (e as Error).message });
-      setBusy(false);
-    }
-  }
+
 
   if (needLogin) return <Shell>{paidId ? <AfterPayment orderId={paidId} onLoggedIn={load} /> : <Login team={false} onDone={load} />}</Shell>;
   if (!a) return <Shell><NoteBox note={note} />{!note && <p className="muted">Loading…</p>}</Shell>;
@@ -354,12 +320,8 @@ function Account() {
             {a.balance.orders.map((o) => <p key={o.id} className="small muted" style={{ margin: 0 }}>{o.remaining} of {o.qty}{o.free ? ' (free)' : o.parentId ? ' (added)' : ''}, valid until {fmt(o.expiresAt!, { day: 'numeric', month: 'short', year: 'numeric' })}</p>)}
             {a.nextDue && (Date.parse(a.nextDue) <= Date.now() ? <p className="small" style={{ margin: 0 }}><b>Your next test is due now.</b></p> : <p className="small" style={{ margin: 0 }}>Next test due around <b>{fmt(a.nextDue, { day: 'numeric', month: 'long' })}</b></p>)}
           </div>
-          {a.balance.total > 0 ? (
-            <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>
-          ) : (
-            <a className="btn full" href="/book">Buy sessions</a>
-          )}
-          {a.topUp && <><hr className="sep" /><AddSessions t={a.topUp} busy={busy} onBuy={buy} /></>}
+          {a.balance.total > 0 && <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>}
+          <a className={a.balance.total > 0 ? 'btn ghost full' : 'btn full'} href="/#book">Buy more sessions</a>
         </aside>
       </div>
     </Shell>

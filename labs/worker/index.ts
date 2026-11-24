@@ -328,20 +328,6 @@ async function api(req: Request, env: Env, ctx: ExecutionContext): Promise<Respo
       });
       return json({ ok: true }, 200, [cookie('sid', '', 0), cookie('co', '', 0)]);
     }
-    if (m === 'POST' && p === '/api/me/topup') {
-      if (!(await allowed(env.RL_CHECKOUT, `checkout:${ip}`))) return fail('Too many attempts from your connection. Wait a minute and try again.', 429);
-      const b = await body(req);
-      const order = await change(env, (st) => engine(st).topUp(cid, Number(b.qty)));
-      try {
-        const checkoutUrl = await createCheckout(env, config, order, me.email, appUrl, '/account?cancelled=1');
-        await change(env, (st) => engine(st).audit(`rider:${me.email}`, 'add sessions, to payment', `${order.qty}, ${engine(st).money(order.total)}`));
-        return json({ url: checkoutUrl }, 200, cookies);
-      } catch (e) {
-        console.error(e);
-        await change(env, (st) => engine(st).checkoutExpired(order.id));
-        return fail('Payment could not be started. Please try again.', 502);
-      }
-    }
     if (m === 'POST') {
       const b = await body(req);
       const by = `rider:${me.email}`;
