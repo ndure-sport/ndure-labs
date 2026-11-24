@@ -57,7 +57,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   ok('page loads with the headline', await page.getByRole('heading', { level: 1 }).innerText().then((t) => t.includes('Lactate testing for cyclists')));
   ok('hero shows the lowest price', (await page.locator('.v-hero-cta').innerText()).includes('From 375 kr a session'), await page.locator('.v-hero-cta').innerText());
-  ok('three plans with the right prices', (await page.locator('.v-plan').count()) === 3 && (await page.locator('.v-pprice').allInnerTexts()).join('|') === '499 kr|435 kr|375 kr', (await page.locator('.v-pprice').allInnerTexts()).join('|'));
+  ok('three plans with the right prices', (await page.locator('.v-plan').count()) === 3 && (await page.locator('.v-pprice').allInnerTexts()).join('|') === '499 kr|429 kr|375 kr', (await page.locator('.v-pprice').allInnerTexts()).join('|'));
   ok('euro guide next to the prices', (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €67') && (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €50'));
   ok('Progress is the black, most riders plan', (await page.locator('.v-plan.black .v-pname').innerText()) === 'Progress' && (await page.locator('.v-plan.black .v-ptag').innerText()) === 'MOST RIDERS');
   ok('no competitor price and no 48 h on the page', !/1,500|1\.500|€200|48 h/.test(await page.locator('body').innerText()));
@@ -91,7 +91,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.getByText('Pick your session', { exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
   ok('step 2 opens', await page.getByText('Pick your session', { exact: true }).isVisible());
   ok('booking page starts at the top', (await page.evaluate(() => scrollY)) === 0);
-  ok('Snapshot shows the upgrade to Progress', await page.getByText('Upgrade to Progress: 3 sessions at 435 kr each').isVisible());
+  ok('Snapshot shows the upgrade to Progress', await page.getByText('Upgrade to Progress: 3 sessions at 429 kr each').isVisible());
   ok('no "choose later" any more', (await page.getByText('Choose dates later').count()) === 0);
   ok('Next is locked until a time is picked', await page.getByRole('button', { name: 'Next: your details' }).isDisabled());
   await page.getByRole('button', { name: '‹ Back' }).click();
@@ -106,7 +106,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   await page.locator('button.mday').nth(1).click();
   await page.locator('.tslot').first().click();
   ok('summary shows the picked time', !(await page.locator('.sum').innerText()).includes('Not chosen yet'));
-  ok('summary total is 1,305 kr', (await page.locator('.sum .tot').innerText()).includes('1,305 kr'));
+  ok('summary total is 1,287 kr', (await page.locator('.sum .tot').innerText()).includes('1,287 kr'));
   await shot(page, `${label}-2-date`);
   await page.getByRole('button', { name: 'Next: your details' }).click();
 
@@ -124,7 +124,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   const n = await boxes.count();
   ok('six consent lines, four required', n === 6 && (await page.locator('.checks em', { hasText: 'Required' }).count()) === 4, `${n}`);
   for (let i = 0; i < n; i++) if ((await boxes.nth(i).locator('em').innerText()) === 'Required') await boxes.nth(i).locator('input').check();
-  ok('pay button shows the total', (await page.getByRole('button', { name: /^Pay / }).innerText()) === 'Pay 1,305 kr');
+  ok('pay button shows the total', (await page.getByRole('button', { name: /^Pay / }).innerText()) === 'Pay 1,287 kr');
   await shot(page, `${label}-3-details`);
   await page.getByRole('button', { name: /^Pay / }).click();
   await page.waitForURL('https://checkout.stripe.test/**', { timeout: 15000 }).catch(() => {});

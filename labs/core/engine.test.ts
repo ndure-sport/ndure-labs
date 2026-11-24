@@ -36,14 +36,14 @@ const rider = (email: string, extra: object = {}) => ({ name: 'Test Rider', emai
 
 test('prices: tiers, partner, lines add up', () => {
   assert.equal(quote(DEFAULT_CONFIG, 1, false).total, 499);
-  assert.equal(quote(DEFAULT_CONFIG, 3, false).unit, 435);
-  assert.equal(quote(DEFAULT_CONFIG, 3, false).total, 1305);
-  assert.equal(quote(DEFAULT_CONFIG, 3, true).total, 1305 + DEFAULT_CONFIG.partnerPrice);
+  assert.equal(quote(DEFAULT_CONFIG, 3, false).unit, 429);
+  assert.equal(quote(DEFAULT_CONFIG, 3, false).total, 1287);
+  assert.equal(quote(DEFAULT_CONFIG, 3, true).total, 1287 + DEFAULT_CONFIG.partnerPrice);
   const q = quote(DEFAULT_CONFIG, 6, false);
   assert.equal(q.total, 2250);
   assert.equal(q.saving, 744);
   assert.equal(q.lines.reduce((s, l) => s + l.amount, 0), q.total);
-  assert.deepEqual(quote(DEFAULT_CONFIG, 1, false).next, { more: 2, unit: 435 });
+  assert.deepEqual(quote(DEFAULT_CONFIG, 1, false).next, { more: 2, unit: 429 });
   assert.equal(q.next, null);
 });
 
@@ -410,7 +410,7 @@ test('CRM: riders due for a check in, contact log, check in email, stop link', (
   assert.throws(() => labs.sendCheckIn(c.id, 'team@ndure.dk'), /asked not to/);
   // Sales count the payment once.
   const s = labs.crm().sales.find((x) => x.month === '2026-11' || x.month === '2026-12')!;
-  assert.equal(labs.crm().sales.reduce((n, x) => n + x.revenue, 0), 1305);
+  assert.equal(labs.crm().sales.reduce((n, x) => n + x.revenue, 0), 1287);
   assert.ok(s);
 });
 

@@ -42,7 +42,7 @@ export const DEFAULT_CONFIG: Config = {
   // Snapshot, Progress, Season
   tiers: [
     { min: 1, unit: 499 },
-    { min: 3, unit: 435 },
+    { min: 3, unit: 429 },
     { min: 6, unit: 375 }
   ],
   packs: [1, 3, 6],

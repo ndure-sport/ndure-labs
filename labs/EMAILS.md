@@ -35,7 +35,7 @@ is in), what to bring and the account link. The booking and moved emails keep "A
 
 **Payment received**
 > Hi Mette,
-> Thanks, we received 1,305 kr for 3 sessions. They are valid until 8 December 2027.
+> Thanks, we received 1,287 kr for 3 sessions. They are valid until 8 December 2027.
 > Log in with your email at book.ndure.dk/account to book, change or cancel sessions.
 
 Extra sessions added from the account say "for 2 extra sessions" and expire with their pack.
