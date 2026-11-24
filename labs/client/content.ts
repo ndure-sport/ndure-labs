@@ -4,8 +4,6 @@
 export const CONTACT_EMAIL = 'contact@ndure.dk';
 
 export const LINKS = {
-  // Calendly or Outlook booking page for the free 15 minute call. Empty: the button opens an email instead.
-  introCall: '',
   // Link to Jack's documentary. Empty: the link is hidden.
   jackStory: '',
   // Video of Anna explaining NDURE Labs (YouTube or Vimeo link). Empty: the section shows the photo only.

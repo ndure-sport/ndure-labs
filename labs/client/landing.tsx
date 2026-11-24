@@ -14,7 +14,6 @@ const PACKS = PLAN_ORDER.filter((n) => CFG.packs.includes(n));
 const unitFor = (n: number) => quote(CFG, n, false).unit;
 const LOWEST = Math.min(...PACKS.map(unitFor));
 const SINGLE = unitFor(1);
-const introHref = LINKS.introCall || `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Free 15 min call about NDURE Labs')}`;
 const longDay = (iso: string) => fmt(iso, { weekday: 'long', day: 'numeric', month: 'long' });
 const clock = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit' });
 
@@ -456,7 +455,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
             </div>
           )}
         </div>
-        <p className="note-s" style={{ textAlign: 'center' }}>Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a> for team pricing. Questions first? <a href={introHref}>Book a free 15 minute call</a>.</p>
+        <p className="note-s" style={{ textAlign: 'center' }}>Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a> for team pricing.</p>
       </div>
     </section>
   );
