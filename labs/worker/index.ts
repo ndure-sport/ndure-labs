@@ -564,7 +564,7 @@ async function calendar(req: Request, env: Env): Promise<Response> {
   if (one) {
     const b = s.db.bookings.find((x) => x.id === one[1]);
     if (!b || one[2] !== (await sessionToken(s.secrets.feed, b.id))) return new Response('Not found', { status: 404, headers: SECURITY });
-    const ics = sessionIcs(b, { method: b.status === 'cancelled' ? 'CANCEL' : 'PUBLISH', from: env.EMAIL_FROM_ADDRESS || 'labs@ndure.dk' });
+    const ics = sessionIcs(b, { method: b.status === 'cancelled' ? 'CANCEL' : 'PUBLISH', from: env.EMAIL_FROM_ADDRESS || 'performance@ndure.dk' });
     return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ndure-labs-session.ics"', 'Cache-Control': 'no-store', ...SECURITY } });
   }
   const token = path.replace('/calendar/', '').replace(/\.ics$/, '');

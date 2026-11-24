@@ -15,6 +15,7 @@ export type Env = {
   TEAM_EMAILS: string;
   EMAIL_FROM_NAME: string;
   EMAIL_FROM_ADDRESS: string;
+  EMAIL_REPLY_TO?: string;
   CURRENCY?: string; // no longer used: the currency comes from core/config.ts
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;

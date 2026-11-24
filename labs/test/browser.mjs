@@ -70,7 +70,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
     const r = await fetch(BASE + p);
     ok(`link ${p} opens`, r.status === 200);
   }
-  for (const m of [...new Set(links.filter((h) => h.startsWith('mailto:')))]) ok(`email link ${m.split('?')[0]}`, /^mailto:contact@ndure\.dk/.test(m));
+  for (const m of [...new Set(links.filter((h) => h.startsWith('mailto:')))]) ok(`email link ${m.split('?')[0]}`, /^mailto:performance@ndure\.dk/.test(m));
   ok('no empty or placeholder links', !links.some((h) => h === '#' || h === '' || /placeholder|intro-call|documentary/.test(h)), links.filter((h) => h === '#' || /placeholder|intro-call|documentary/.test(h)).join(', '));
   ok('no placeholder text on the page', !/PLACEHOLDER|DRAFT|\[x\]|\[date\]/i.test(await page.locator('body').innerText()));
 

@@ -1,7 +1,7 @@
 // Everything on the Labs page that the team may want to change without touching layout.
 // Leave a link empty ('') and the page hides that button or falls back to email.
 
-export const CONTACT_EMAIL = 'contact@ndure.dk';
+export const CONTACT_EMAIL = 'performance@ndure.dk';
 
 export const LINKS = {
   // Link to Jack's documentary. Empty: the link is hidden.

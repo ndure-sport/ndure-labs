@@ -175,12 +175,12 @@ export function renderEmail(e: Pick<Email, 'template' | 'subject' | 'body'>, x: 
     ${cta ? `<div style="margin-top:24px">${cta}</div>` : ''}
   </td></tr>
   <tr><td style="padding:20px 28px;font-size:12px;line-height:1.6;color:#767676">
-    NDURE Labs · Diplomvej 376, 2800 Kongens Lyngby · <a href="mailto:contact@ndure.dk" style="color:#767676">contact@ndure.dk</a><br>
+    NDURE Labs · Diplomvej 376, 2800 Kongens Lyngby · <a href="mailto:performance@ndure.dk" style="color:#767676">performance@ndure.dk</a><br>
     Questions? Just reply to this email.${stop ? `<br><a href="${esc(stop.startsWith('http') ? stop : `https://${stop}`)}" style="color:#767676">Stop reminder emails</a>` : ''}
   </td></tr>
 </table></td></tr></table></body></html>`;
 
-  return { html, text: text + (stop ? `\n\nStop reminder emails: ${stop}` : '') + '\n\nNDURE Labs, Diplomvej 376, 2800 Kongens Lyngby. contact@ndure.dk' };
+  return { html, text: text + (stop ? `\n\nStop reminder emails: ${stop}` : '') + '\n\nNDURE Labs, Diplomvej 376, 2800 Kongens Lyngby. performance@ndure.dk' };
 }
 
 // The team's calendar copy of a session: who is coming, how to reach them.

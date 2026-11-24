@@ -37,7 +37,7 @@ function SlotPicker({ slots, value, onChange, need }: { slots: Slot[] | null; va
     return [...m.entries()];
   }, [slots]);
   if (!slots) return <p className="muted">Loading free sessions…</p>;
-  if (slots.length === 0) return <p className="msg err">No free sessions{need > 1 ? ' with 2 spots' : ''} in the coming weeks. Email contact@ndure.dk.</p>;
+  if (slots.length === 0) return <p className="msg err">No free sessions{need > 1 ? ' with 2 spots' : ''} in the coming weeks. Email performance@ndure.dk.</p>;
   const first = slots[0];
   return (
     <div className="stack">
@@ -190,7 +190,7 @@ function SessionCard({ b, c, busy, onMove, onCancel, confirming, onConfirm, onKe
         ? <div className="formbox done"><span>✓ We have your pre session form. Thanks!</span></div>
         : <div className="formbox"><span>Fill in the pre session form before you come (4 minutes), so we can set up your test.</span><a className="btn sm" href={formLink(c, b)} target="_blank" rel="noopener noreferrer">Open the form</a></div>}
       <CalendarLinks b={b} />
-      <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email contact@ndure.dk.'}</p>
+      <p className="muted small" style={{ margin: 0 }}>{b.changeable ? 'Free to move or cancel until 24 hours before.' : 'Less than 24 hours to go: to change, email performance@ndure.dk.'}</p>
     </div>
   );
 }
@@ -296,7 +296,7 @@ function Account() {
             <div className="scard" id="picker" style={{ scrollMarginTop: 96 }}>
               <div className="row spread"><h2 style={{ margin: 0, fontSize: 21 }}>{mode.type === 'book' ? 'Book your next session' : `Move ${moving ? longDay(moving.start) : 'your session'}`}</h2><span className="muted small">Tue to Thu{noticeText(DEFAULT_CONFIG) && ` · at least ${noticeText(DEFAULT_CONFIG)} ahead`}</span></div>
               {!slots ? <p className="muted">Loading free sessions…</p> : slots.length === 0 ? (
-                <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">Email contact@ndure.dk and we find a time for you.</p></div>
+                <div className="soldout"><p><b>No free sessions in the coming weeks</b></p><p className="muted">Email performance@ndure.dk and we find a time for you.</p></div>
               ) : <MonthPicker slots={slots} value={pick} onChange={setPick} compact />}
               <div className="row">
                 <button className="btn" disabled={!pick || busy} onClick={() => mode.type === 'book' ? act('/api/me/book', { start: pick }, 'Booked. A confirmation is on its way.') : act('/api/me/reschedule', { bookingId: mode.id, start: pick }, 'Moved. A confirmation is on its way.')}>
@@ -770,7 +770,7 @@ function StopReminders() {
     <Shell>
       <section className="card narrow">
         {state === 'done' ? (
-          <><h1>Done</h1><p className="muted">You will not get reminder emails from NDURE Labs any more. Booking confirmations still arrive. Changed your mind? Email contact@ndure.dk.</p></>
+          <><h1>Done</h1><p className="muted">You will not get reminder emails from NDURE Labs any more. Booking confirmations still arrive. Changed your mind? Email performance@ndure.dk.</p></>
         ) : (
           <>
             <h1>Stop reminder emails?</h1>

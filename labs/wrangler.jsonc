@@ -33,7 +33,7 @@
     "APP_URL": "https://ndure-labs.arthur-2b2.workers.dev",
     "TEAM_EMAILS": "arthurherbosch@hotmail.com",
     "EMAIL_FROM_NAME": "NDURE Labs",
-    "EMAIL_FROM_ADDRESS": "labs@ndure.dk",
+    "EMAIL_FROM_ADDRESS": "performance@ndure.dk",
     // Public key of the Turnstile bot check. The check switches on once TURNSTILE_SECRET_KEY is set too.
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFpeN7V8Vhq26NSw"
   },
@@ -46,7 +46,7 @@
     "vars": {
       "TEAM_EMAILS": "arthurherbosch@hotmail.com",
       "EMAIL_FROM_NAME": "NDURE Labs (preview)",
-      "EMAIL_FROM_ADDRESS": "labs@ndure.dk"
+      "EMAIL_FROM_ADDRESS": "performance@ndure.dk"
     },
     "d1_databases": [
       {
