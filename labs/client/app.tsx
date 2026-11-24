@@ -321,7 +321,7 @@ function Account() {
             {a.nextDue && (Date.parse(a.nextDue) <= Date.now() ? <p className="small" style={{ margin: 0 }}><b>Your next test is due now.</b></p> : <p className="small" style={{ margin: 0 }}>Next test due around <b>{fmt(a.nextDue, { day: 'numeric', month: 'long' })}</b></p>)}
           </div>
           {a.balance.total > 0 && <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>}
-          <a className={a.balance.total > 0 ? 'btn ghost full' : 'btn full'} href="/#book">Buy more sessions</a>
+          <a className={a.balance.total > 0 ? 'btn ghost full' : 'btn full'} href="/#price">Buy more sessions</a>
         </aside>
       </div>
     </Shell>

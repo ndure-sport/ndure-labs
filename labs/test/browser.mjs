@@ -148,7 +148,8 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('session card shows where and what to bring', (await page.locator('.scard').first().innerText()).includes('Diplomvej 381') && (await page.locator('.scard').first().innerText()).includes('sleeveless top'));
   ok('pre session form link with the rider filled in', /^https:\/\/tally\.so\/r\/peyDxB\?.*email=browser/.test(await page.locator('.formbox a').getAttribute('href')));
   ok('add to calendar links', (await page.locator('.cal-links a').count()) === 3);
-  ok('no Add sessions on a Progress pack (only after a Snapshot)', (await page.getByRole('button', { name: /^Add \d session/ }).count()) === 0);
+  ok('no Add sessions offer in the account', (await page.getByRole('button', { name: /^Add \d session/ }).count()) === 0 && (await page.getByText('Upgrade to Progress').count()) === 0);
+  ok('Buy more sessions is always there and goes to the packs', (await page.getByRole('link', { name: 'Buy more sessions' }).getAttribute('href')) === '/#price');
 
   // Book a second session from the account.
   await page.getByRole('button', { name: 'Book a session' }).click();
