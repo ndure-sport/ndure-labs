@@ -229,6 +229,9 @@ export class Labs {
       const notice = h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
       throw new LabsError(`Sessions need to be booked at least ${notice} ahead.`, 'too_soon');
     }
+    if (!opts.team && ms > this.now() + days(7 * this.config.bookingWeeksAhead)) {
+      throw new LabsError(`Sessions can be booked up to ${this.config.bookingWeeksAhead} weeks ahead.`, 'too_far');
+    }
     const opens = this.opensOn();
     if (!opts.team && opens && cphDate(ms) < opens) {
       throw new LabsError(`Booking opens for sessions from ${fmt(opens + 'T12:00:00Z', { day: 'numeric', month: 'long' })}.`, 'not_open');

@@ -53,7 +53,7 @@ export const DEFAULT_CONFIG: Config = {
   // Switched off for testing. To turn the rules on again: minNoticeHours: 168 (one week) and
   // opensOn: '2026-12-01'. The texts on the site follow these two settings by themselves.
   minNoticeHours: 0,
-  bookingWeeksAhead: 8,
+  bookingWeeksAhead: 12,
   opensOn: null,
   holdMinutes: 35,
   // Tuesday 4 sessions, Wednesday 4 with one flex pair, Thursday 3. One rider per session.

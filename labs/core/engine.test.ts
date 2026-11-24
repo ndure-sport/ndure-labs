@@ -114,6 +114,20 @@ test('pack: pay now, book later, balance goes down and up', () => {
   assert.equal(labs.balance(c.id).total, 6);
 });
 
+test('riders can book up to 12 weeks ahead; the team can book further', () => {
+  const { labs } = setup();
+  labs.paid(labs.checkout(rider('a@x.dk', { qty: 6, later: true })).id);
+  const c = labs.customerByEmail('a@x.dk')!;
+  assert.equal(DEFAULT_CONFIG.bookingWeeksAhead, 12);
+  const last = Math.max(...labs.slots().map((s) => Date.parse(s.start)));
+  assert.ok(last <= Date.parse('2026-11-30T10:00:00+01:00') + 12 * 7 * 86_400_000, 'the calendar stops at 12 weeks');
+  assert.throws(() => labs.book(c.id, '2027-03-03T09:30:00+01:00', { by: 'rider' }), /up to 12 weeks ahead/);
+  const b = labs.book(c.id, '2027-02-17T09:30:00+01:00', { by: 'rider' });
+  assert.throws(() => labs.reschedule(b.id, '2027-03-03T09:30:00+01:00', 'rider'), /up to 12 weeks ahead/);
+  assert.ok(labs.book(c.id, '2027-03-03T09:30:00+01:00', { by: 'team' }));
+  assert.throws(() => labs.checkout(rider('b@x.dk', { start: '2027-03-03T09:30:00+01:00' })), /up to 12 weeks ahead/);
+});
+
 test('a rider cannot book the same session twice', () => {
   const { labs } = setup();
   labs.paid(labs.checkout(rider('a@x.dk', { qty: 3, later: true })).id);
