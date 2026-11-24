@@ -33,8 +33,8 @@ export const JACK = {
 
 export const PLAN_INFO: Record<number, { tier: string; tag: string; line: string; inc: string[]; not?: string[] }> = {
   1: { tier: 'Snapshot', tag: 'TRY IT', line: 'One look at your zones today.', inc: ['1 lab test with our performance physiologist', 'Continuous and blood lactate', 'Performance report', 'Your LT1, LT2 and zones'], not: ['No retest to follow your progress'] },
-  3: { tier: 'Progress', tag: 'MOST RIDERS', line: 'Come back and see what works.', inc: ['Lab tests with our performance physiologist', 'Continuous and blood lactate', 'Performance report after every test', 'New LT1, LT2 and zones every time you come back', 'See your progress test to test'] },
-  6: { tier: 'Season', tag: 'LOWEST PRICE', line: 'Follow your progress all season.', inc: ['Lab tests with our performance physiologist', 'Continuous and blood lactate', 'Performance report after every test', 'New LT1, LT2 and zones every time you come back', 'See your progress test to test'] }
+  3: { tier: 'Progress', tag: 'MOST RIDERS', line: 'Come back and see what works.', inc: ['3 lab tests with our performance physiologist', 'Continuous and blood lactate', 'Performance report after every test', 'New LT1, LT2 and zones every time you come back', 'See your progress test to test'] },
+  6: { tier: 'Season', tag: 'LOWEST PRICE', line: 'Follow your progress all season.', inc: ['6 lab tests with our performance physiologist', 'Continuous and blood lactate', 'Performance report after every test', 'New LT1, LT2 and zones every time you come back', 'See your progress test to test'] }
 };
 export const RECOMMENDED = 3;
 export const PLAN_ORDER = [1, 3, 6];

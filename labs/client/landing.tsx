@@ -86,17 +86,21 @@ function Prices() {
           <span className="v-tag white">Prices</span>
           <h2 id="price-t" className="v-h2"><span className="bl">Pick your program.</span><span className="bl">Come back whenever you want.</span></h2>
         </div>
-        <span className="v-s">Valid {CFG.validityMonths} months · pay once · no subscription</span>
+        <ul className="v-perks"><li>✓&nbsp; Valid {CFG.validityMonths} months</li><li>✓&nbsp; Pay once</li><li>✓&nbsp; No subscription</li></ul>
       </div>
       <div className="v-plans">
         {PACKS.map((n) => {
           const p = PLAN_INFO[n];
           const q = quote(CFG, n, false);
+          const singles = n * quote(CFG, 1, false).unit;
+          const save = singles - q.total;
+          const pct = Math.round((save / singles) * 100);
           return (
             <div key={n} className={`v-plan ${SKIN[n] ?? 'white'}`}>
-              <span className="v-ptag">{p.tag}</span>
+              <span className="v-ptags"><span className="v-ptag">{p.tag}</span>{save > 0 && <span className="v-save">Save {kr(save)}</span>}</span>
               <b className="v-pname">{p.tier}</b>
-              <span className="v-pm">{n === 1 ? '1 session' : `${n} sessions · ${kr(q.total)}`}</span>
+              <span className="v-ptot">{kr(q.total)} <span>total · {n === 1 ? '1 session' : `${n} sessions`}</span></span>
+              {save > 0 && <span className="v-pless">{pct}% less than {n} single sessions</span>}
               <span className="v-pprice">{kr(q.unit)}</span>
               <span className="v-pm">{n === 1 ? 'for one session' : 'per session'} · {eur(q.unit)}</span>
               <ul>
