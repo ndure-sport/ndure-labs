@@ -77,8 +77,9 @@ export const DEFAULT_CONFIG: Config = {
 };
 
 // " · at least 1 week ahead" when the notice rule is on, otherwise nothing.
-export function noticeText(c: Config): string {
+export function noticeText(c: Config, da = false): string {
   const h = c.minNoticeHours;
   if (h < 24) return '';
+  if (da) return h % 24 === 0 ? (h / 24 === 7 ? '1 uge' : `${h / 24} dage`) : `${h} timer`;
   return h % 24 === 0 ? (h / 24 === 7 ? '1 week' : `${h / 24} days`) : `${h} hours`;
 }

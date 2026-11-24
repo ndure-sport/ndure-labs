@@ -47,8 +47,8 @@ export function addMonths(ms: number, n: number): number {
   return d.getTime();
 }
 
-export function fmt(iso: string | number, o: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, ...o }).format(new Date(iso));
+export function fmt(iso: string | number, o: Intl.DateTimeFormatOptions, locale = 'en-GB'): string {
+  return new Intl.DateTimeFormat(locale, { timeZone: TZ, ...o }).format(new Date(iso));
 }
 
 export const when = (iso: string | number) =>

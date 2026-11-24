@@ -61,6 +61,10 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('euro guide next to the prices', (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €67') && (await page.locator('.v-plan').allInnerTexts()).join(' ').includes('about €50'));
   ok('Progress is the black, most riders plan', (await page.locator('.v-plan.black .v-pname').innerText()) === 'Progress' && (await page.locator('.v-plan.black .v-ptag').innerText()) === 'MOST RIDERS');
   ok('no competitor price and no 48 h on the page', !/1,500|1\.500|€200|48 h/.test(await page.locator('body').innerText()));
+  await page.getByRole('button', { name: 'DA', exact: true }).click();
+  ok('DA switches the page to Danish', (await page.getByRole('heading', { level: 1 }).innerText()).includes('Laktattest for cykelryttere') && (await page.locator('.v-pprice').allInnerTexts()).join('|') === '499 kr|429 kr|375 kr' && (await page.locator('.v-ptot').nth(1).innerText()).startsWith('1.287 kr'));
+  await page.getByRole('button', { name: 'EN', exact: true }).click();
+  ok('EN switches back to English', (await page.getByRole('heading', { level: 1 }).innerText()).includes('Lactate testing for cyclists'));
 
   // Every link on the page goes somewhere real.
   const links = await page.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));

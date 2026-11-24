@@ -55,3 +55,29 @@ export const FAQS: [string, string][] = [
   ['Can I change my date?', 'Yes, for free until 24 hours before your session.'],
   ['Is it a subscription?', 'No. You pay once.']
 ];
+
+// ---------- Danish versions (Labs page and booking page only). Have a native speaker check these. ----------
+export const PLAN_INFO_DA: Record<number, { tag: string; line: string; inc: string[]; not?: string[] }> = {
+  1: { tag: 'PRØV DET', line: 'Ét kig på dine zoner i dag.', inc: ['1 labtest med vores performancefysiolog', 'Kontinuerlig laktat og blodlaktat', 'Performancerapport', 'Dine LT1, LT2 og zoner'], not: ['Ingen gentest til at følge din udvikling'] },
+  3: { tag: 'FLEST RYTTERE', line: 'Kom igen og se, hvad der virker.', inc: ['3 labtests med vores performancefysiolog', 'Kontinuerlig laktat og blodlaktat', 'Performancerapport efter hver test', 'Nye LT1, LT2 og zoner, hver gang du kommer igen', 'Følg din udvikling fra test til test'] },
+  6: { tag: 'LAVESTE PRIS', line: 'Følg din udvikling hele sæsonen.', inc: ['6 labtests med vores performancefysiolog', 'Kontinuerlig laktat og blodlaktat', 'Performancerapport efter hver test', 'Nye LT1, LT2 og zoner, hver gang du kommer igen', 'Følg din udvikling fra test til test'] }
+};
+
+export const FLOW_DA: [string, string][] = [
+  ['Book', 'Vælg dine sessioner og en dato.'],
+  ['Mød op', 'DTU Science Park, Diplomvej 381, 2800 Kongens Lyngby.'],
+  ['Mød Anna', 'Vores performancefysiolog.'],
+  ['Kør testen', 'Ca. 2 timer. Vi måler din laktat.'],
+  ['Få din rapport', 'Dine LT1, LT2 og zoner.'],
+  ['Kom igen', 'Mål igen om nogle uger.']
+];
+
+export const FAQS_DA: [string, string][] = [
+  ['Får jeg en sensor med hjem?', 'Nej. Du kører med vores i laboratoriet. NDURE Labs er en test, ikke et produkt.'],
+  ['Hvor ligger laboratoriet?', 'På DTU Science Park, Diplomvej 381, Kongens Lyngby. Vi henter dig i receptionen.'],
+  ['Hvad skal jeg have med?', 'Cykelsko, cykelbukser, en ærmeløs trøje og en drikkedunk. Der er mulighed for bad bagefter.'],
+  ['Jeg er ikke professionel. Er det noget for mig?', 'Ja. Cykler du regelmæssigt, får du meget ud af det.'],
+  ['Hvor ofte skal jeg komme igen?', 'Vi anbefaler hver måned, eller med få ugers mellemrum i din opbygningsperiode. Dine sessioner er gyldige i 12 måneder.'],
+  ['Kan jeg ændre min dato?', 'Ja, gratis indtil 24 timer før din session.'],
+  ['Er det et abonnement?', 'Nej. Du betaler én gang.']
+];

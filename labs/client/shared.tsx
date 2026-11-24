@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { ConsentKey } from '../core/types';
 import { CONTACT_EMAIL } from './content';
+import { useT, LangToggle } from './i18n';
 
 export const kr = (n: number) => `${n.toLocaleString('en-US')} kr`;
 
@@ -87,14 +88,18 @@ export function Turnstile({ siteKey, onToken }: { siteKey: string | null; onToke
   return siteKey ? <div ref={ref} className="turnstile" /> : null;
 }
 
-export function Header({ home = false }: { home?: boolean }) {
+export function Header({ home = false, lang = false }: { home?: boolean; lang?: boolean }) {
+  // Only the Labs page and the booking page have Danish; the other pages stay English.
+  const { t: tr } = useT();
+  const t = lang ? tr : (en: string) => en;
   return (
     <header className="hdr">
       <div className="hdr-in">
-        <a href="/" className="brand" aria-label="NDURE Labs, home"><img src="/img/ndure-logo.png" alt="NDURE" width="32" height="32" /><b>NDURE Labs</b><span>Booking</span></a>
-        <nav aria-label="Main">
-          <a className="hb ghost" href="/account">{home ? 'Log in' : 'My account'}</a>
-          <a className="hb" href={home ? '#price' : '/#price'}>Book a session</a>
+        <a href="/" className="brand" aria-label={t('NDURE Labs, home', 'NDURE Labs, forside')}><img src="/img/ndure-logo.png" alt="NDURE" width="32" height="32" /><b>NDURE Labs</b><span>Booking</span></a>
+        <nav aria-label={t('Main', 'Hovedmenu')}>
+          {lang && <LangToggle />}
+          <a className="hb ghost" href="/account">{home ? t('Log in', 'Log ind') : t('My account', 'Min konto')}</a>
+          <a className="hb" href={home ? '#price' : '/#price'}>{t('Book a session', 'Book en session')}</a>
         </nav>
       </div>
     </header>

@@ -668,3 +668,10 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
 h1, h2, h3, summary, .v-big, .v-foot-h, .v-line, .v-steps b { text-wrap: balance; }
 p, li, .v-card span, .v-steps span, .v-pm, .v-lbl, .v-note { text-wrap: pretty; }
 .bl { display: block; text-wrap: balance; }
+
+/* Language toggle (Labs page and booking page) */
+.lang { display: inline-flex; border: 1px solid #CCC; border-radius: 100px; padding: 2px; margin-right: 2px; }
+.lang button { border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 600; color: var(--faint); min-height: 32px; min-width: 34px; padding: 0 8px; border-radius: 100px; cursor: pointer; }
+.lang button[aria-pressed="true"] { background: #000; color: #fff; }
+@media (max-width: 420px) { .lang button { min-width: 30px; padding: 0 6px; } .hdr nav { gap: 6px; } }
+@media (max-width: 560px) { .brand b, .brand span { display: none; } .hb { padding: 8px 14px; font-size: 12px; } .hb.ghost { padding: 8px 12px; } }
