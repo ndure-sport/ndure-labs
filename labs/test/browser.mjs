@@ -153,6 +153,8 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
 
   // Book a second session from the account.
   await page.getByRole('button', { name: 'Book a session' }).click();
+  // Late in the month there can be fewer than 3 free days left: go to next month then.
+  if ((await page.locator('#picker button.mday').count()) < 3) await page.locator('#picker').getByRole('button', { name: 'Next month' }).click();
   await page.locator('#picker button.mday').nth(2).click();
   await page.locator('#picker .tslot').first().click();
   await shot(page, `${label}-5-account-book`);
