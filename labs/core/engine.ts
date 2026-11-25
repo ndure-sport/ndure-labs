@@ -425,7 +425,7 @@ export class Labs {
   private partnerOrder(token: string): Order {
     const t = clean(token, 64);
     const o = t.length >= 16 ? this.db.orders.find((x) => x.partnerToken === t && x.status === 'paid') : undefined;
-    if (!o) throw new LabsError('This link is not valid. Ask the rider who signed you up, or email contact@ndure.dk.', 'partner_link');
+    if (!o) throw new LabsError('This link is not valid. Ask the rider who signed you up, or email performance@ndure.dk.', 'partner_link');
     return o;
   }
 
@@ -510,7 +510,7 @@ export class Labs {
     if (b.status !== 'booked') throw new LabsError('This session is not booked.', 'not_booked');
     if (Date.parse(b.start) <= this.now()) throw new LabsError('This session has already started.', 'past');
     if (by === 'rider' && Date.parse(b.start) - this.now() < hours(this.config.changeDeadlineHours)) {
-      throw new LabsError(`Changes are possible until ${this.config.changeDeadlineHours} hours before. Email contact@ndure.dk if something came up.`, 'too_late');
+      throw new LabsError(`Changes are possible until ${this.config.changeDeadlineHours} hours before. Email performance@ndure.dk if something came up.`, 'too_late');
     }
   }
 
@@ -756,7 +756,7 @@ export class Labs {
   private issueCode(key: string, to: string, emailKey: string, subject: (code: string) => string, body: (code: string) => string, makeCode: () => string) {
     const recent = this.db.emails.filter((m) => m.to === to && m.template === 'login_code' && Date.parse(m.at) > this.now() - hours(1));
     if (recent.length >= 5) throw new LabsError('Too many codes requested. Try again in an hour.', 'rate');
-    if ((this.recentFails(key)?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email contact@ndure.dk.', 'locked');
+    if ((this.recentFails(key)?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email performance@ndure.dk.', 'locked');
     const code = makeCode();
     this.db.codes = this.db.codes.filter((x) => x.email !== key);
     this.db.codes.push({ email: key, code, expiresAt: this.iso(this.now() + this.config.loginCodeMinutes * 60_000), attempts: 0 });
@@ -765,7 +765,7 @@ export class Labs {
 
   private checkCode(key: string, code: string) {
     const f = this.recentFails(key);
-    if ((f?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email contact@ndure.dk.', 'locked');
+    if ((f?.n ?? 0) >= LOGIN_FAILS_PER_DAY) throw new LabsError('Too many wrong codes today. Try again tomorrow or email performance@ndure.dk.', 'locked');
     const rec = this.db.codes.find((x) => x.email === key);
     if (!rec || Date.parse(rec.expiresAt) <= this.now()) throw new LabsError('That code has expired. Ask for a new one.', 'code_expired');
     if (rec.attempts >= this.config.loginMaxAttempts) throw new LabsError('Too many wrong tries. Ask for a new code.', 'code_locked');
@@ -865,7 +865,7 @@ export class Labs {
   stopReminders(token: string) {
     const t = clean(token, 40);
     const c = t.length >= 20 ? this.db.customers.find((x) => x.stopToken === t) : undefined;
-    if (!c) throw new LabsError('This link is not valid. Email contact@ndure.dk and we stop the reminders.', 'stop');
+    if (!c) throw new LabsError('This link is not valid. Email performance@ndure.dk and we stop the reminders.', 'stop');
     if (!c.noReminders) {
       c.noReminders = true;
       this.logContact({ by: `rider:${c.email}`, customerId: c.id, kind: 'note', text: 'Stopped reminder emails' });

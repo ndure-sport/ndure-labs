@@ -44,7 +44,7 @@ writeFileSync(
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div id="root"><noscript><p style="font-family:sans-serif;padding:24px">NDURE Labs needs JavaScript to book. You can also email contact@ndure.dk.</p></noscript></div>
+<div id="root"><noscript><p style="font-family:sans-serif;padding:24px">NDURE Labs needs JavaScript to book. You can also email performance@ndure.dk.</p></noscript></div>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

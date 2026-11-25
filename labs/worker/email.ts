@@ -42,7 +42,8 @@ async function brevo(env: Env, to: string[], subject: string, text: string, atta
     method: 'POST',
     headers: { 'api-key': env.BREVO_API_KEY, 'Content-Type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({
-      sender: { name: env.EMAIL_FROM_NAME || 'NDURE Labs', email: env.EMAIL_FROM_ADDRESS || 'labs@ndure.dk' },
+      sender: { name: env.EMAIL_FROM_NAME || 'NDURE Labs', email: env.EMAIL_FROM_ADDRESS || 'performance@ndure.dk' },
+      replyTo: { name: 'NDURE Labs', email: env.EMAIL_REPLY_TO || 'performance@ndure.dk' },
       to: to.map((email) => ({ email })),
       subject,
       textContent: text,
@@ -94,7 +95,7 @@ export async function deliver(env: Env, max: number): Promise<{ sent: number; fa
   if (!work.jobs.length && !work.alerts.length) return { sent: 0, failed: 0 };
 
   const appUrl = appUrlOf(env);
-  const from = env.EMAIL_FROM_ADDRESS || 'labs@ndure.dk';
+  const from = env.EMAIL_FROM_ADDRESS || 'performance@ndure.dk';
   const results: Record<string, string | null> = {}; // email id → null when sent, else the error
   for (const { email: e, booking: b, customer: c } of work.jobs) {
     const icsUrl = b ? `${appUrl}/calendar/session/${b.id}/${await sessionToken(peek.secrets.feed, b.id)}.ics` : undefined;

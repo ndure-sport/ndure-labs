@@ -11,7 +11,7 @@ Remove a name to switch it on, add one to switch it off. Booking emails (the fir
 **Change the words:** the texts live in `core/engine.ts` (search for the subject). The design (logo, colours,
 buttons, the session card and calendar links) lives in `worker/mail.ts`. Ask Claude, so the tests run before it goes live.
 
-Every rider email has the NDURE logo on top, the address and contact@ndure.dk at the bottom, and replies go to contact@ndure.dk.
+Every email comes from performance@ndure.dk (sender name "NDURE Labs"). Replies go to performance@ndure.dk too, and every rider email shows that address at the bottom.
 
 ## Booking emails: always on
 
