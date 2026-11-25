@@ -77,17 +77,10 @@ function Why() {
 
 const SKIN: Record<number, string> = { 1: 'white', 3: 'black', 6: 'cream' };
 
-function Prices() {
+// The three plan cards, the same on the Labs page and on the booking page.
+function PlanCards({ onChoose }: { onChoose?: (n: number) => void }) {
   return (
-    <section id="price" className="v-sec grey" aria-labelledby="price-t">
-      <div className="v-price-head">
-        <div>
-          <span className="v-tag white">Prices</span>
-          <h2 id="price-t" className="v-h2"><span className="bl">Pick your program.</span><span className="bl">Come back whenever you want.</span></h2>
-        </div>
-        <ul className="v-perks"><li>✓&nbsp; Valid {CFG.validityMonths} months</li><li>✓&nbsp; Pay once</li><li>✓&nbsp; No subscription</li></ul>
-      </div>
-      <div className="v-plans">
+    <div className="v-plans">
         {PACKS.map((n) => {
           const p = PLAN_INFO[n];
           const q = quote(CFG, n, false);
@@ -106,11 +99,27 @@ function Prices() {
                 {p.inc.map((t) => <li key={t}><span aria-hidden="true">✓</span>{t}</li>)}
                 {(p.not ?? []).map((t) => <li key={t} className="no"><span aria-hidden="true">✕</span>{t}</li>)}
               </ul>
-              <a className="v-pbtn" href={bookHref(n)}>Choose {p.tier}</a>
+              {onChoose
+                ? <button type="button" className="v-pbtn" onClick={() => onChoose(n)}>Choose {p.tier}</button>
+                : <a className="v-pbtn" href={bookHref(n)}>Choose {p.tier}</a>}
             </div>
           );
         })}
+          </div>
+  );
+}
+
+function Prices() {
+  return (
+    <section id="price" className="v-sec grey" aria-labelledby="price-t">
+      <div className="v-price-head">
+        <div>
+          <span className="v-tag white">Prices</span>
+          <h2 id="price-t" className="v-h2"><span className="bl">Pick your program.</span><span className="bl">Come back whenever you want.</span></h2>
+        </div>
+        <ul className="v-perks"><li>✓&nbsp; Valid {CFG.validityMonths} months</li><li>✓&nbsp; Pay once</li><li>✓&nbsp; No subscription</li></ul>
       </div>
+      <PlanCards />
       <p className="v-note">Already have sessions? <a href="/account">Log in</a>. Team or club? <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Team pricing, NDURE Labs')}`}>Email {CONTACT_EMAIL}</a>.</p>
     </section>
   );
@@ -216,41 +225,22 @@ function SiteFooter() {
 }
 
 // ---------------- booking ----------------
-const LINK_FOR: Partial<Record<ConsentKey, [string, string]>> = {
-  ready: ['/health-check', 'Read the health check'],
-  health: ['/privacy', 'Privacy policy'],
-  terms: ['/terms', 'Read the terms']
-};
+// Links inside the consent sentences.
+function ConsentText({ text, k }: { text: string; k: ConsentKey }) {
+  const parts = text.replace(/^Optional: /, '').split(/(terms and cancellation policy|health check)/);
+  const href: Record<string, string> = { 'terms and cancellation policy': '/terms', 'health check': '/health-check' };
+  return (<>{parts.map((x, i) => href[x] ? <a key={i} href={href[x]} target="_blank" rel="noopener noreferrer">{x}</a> : x)}{k === 'health' && <> <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy policy</a></>}</>);
+}
 
 // The three packs. On the Labs page "Choose" opens the booking page; on the booking page it goes to the date.
-function Plans({ qty, onPick, onChoose }: { qty: number; onPick: (n: number) => void; onChoose: (n: number) => void }) {
+function Plans({ onChoose }: { onChoose: (n: number) => void }) {
   return (
     <>
-      <div className="plans" role="list">
-        {PACKS.map((n) => {
-          const p = PLAN_INFO[n];
-          const pq = quote(CFG, n, false);
-          const rec = n === RECOMMENDED;
-          return (
-            <div key={n} role="listitem" className={`plan${rec ? ' rec' : ''}${qty === n ? ' sel' : ''}`} onClick={() => onPick(n)}>
-              <span className="tag">{rec && <b>RECOMMENDED</b>}</span>
-              <span className="h3">{p.tier}</span>
-              <span className="m">{n === 1 ? '1 session' : `${n} sessions`}</span>
-              <span className="price"><b>{kr(pq.unit)}</b><span className="m">per session</span></span>
-              <span className="m">{n === 1 ? 'one session' : `${kr(pq.total)} in total`}</span>
-              {pq.saving > 0 && <span className="save">Save {kr(pq.saving)}</span>}
-              <span className="m" style={{ marginTop: 6 }}>{p.line}</span>
-              <ul className="inc"><p>WHAT YOU GET</p>{p.inc.map((t) => <li key={t}>{t}</li>)}</ul>
-              <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onChoose(n); }}>Choose {p.tier}</button>
-            </div>
-          );
-        })}
-      </div>
-      <p className="note-s">We suggest a session every 8 weeks. Packs are valid for {CFG.validityMonths} months: book the rest whenever you want.</p>
+      <PlanCards onChoose={onChoose} />
+      <p className="note-s">We suggest a session every month to every 8 weeks. Packs are valid for {CFG.validityMonths} months: book the rest whenever you want.</p>
     </>
   );
 }
-
 
 function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slotError: string | null; reloadSlots: () => void }) {
   const params = useMemo(() => new URLSearchParams(location.search), []);
@@ -349,7 +339,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
       <div className="sumqty"><b>{qty}</b><span><b>{qty === 1 ? 'lab session' : 'lab sessions'}</b><small>{info.tier} pack · {qty === 1 ? '1 test, 1 report' : `${qty} tests, ${qty} reports`}</small></span></div>
       <div className="ln"><span>{qty > 1 ? 'Session 1' : 'Session'}</span><span style={{ textAlign: 'right' }}>{start ? when(start) : 'Not chosen yet'}</span></div>
       {qty > 1 && <div className="ln"><span style={{ whiteSpace: 'nowrap' }}>{qty === 2 ? 'Session 2' : `Sessions 2 to ${qty}`}</span><span style={{ textAlign: 'right' }}>Book later in your account</span></div>}
-      <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>DTU Science Park reception<br />Diplomvej 381, Kongens Lyngby</span></div>
+      <div className="ln"><span>Where</span><span style={{ textAlign: 'right' }}>Diplomvej 381, Kongens Lyngby</span></div>
       <div className="ln"><span>Price</span><span>{qty > 1 && `${qty} × `}{q.saving > 0 && <s style={{ color: '#999', margin: '0 4px' }}>{kr(SINGLE)}</s>}{kr(q.unit)}</span></div>
       <div className="ln tot"><span style={{ color: '#000' }}>{qty > 1 ? `Total for ${qty} sessions` : 'Total'}</span><span>{kr(q.total)}</span></div>
       {q.saving > 0 && <p className="small" style={{ margin: '-4px 0 0', color: 'var(--blue)', fontWeight: 600, textAlign: 'right' }}>You save {kr(q.saving)}</p>}
@@ -395,7 +385,7 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
           </div>
           <Msg note={note} />
 
-          {step === 1 && <Plans qty={qty} onPick={setQty} onChoose={choose} />}
+          {step === 1 && <Plans onChoose={choose} />}
 
           {step === 2 && (
             <div className="cols">
@@ -434,11 +424,10 @@ function Booking({ slots, slotError, reloadSlots }: { slots: Slot[] | null; slot
                     <legend>Before you pay</legend>
                     {(Object.keys(cfg.consents) as ConsentKey[]).map((k) => {
                       const req = cfg.required.includes(k);
-                      const link = LINK_FOR[k];
                       return (
                         <label key={k} className="chk">
                           <input type="checkbox" checked={!!consents[k]} onChange={() => setConsents({ ...consents, [k]: !consents[k] })} />
-                          <span>{cfg.consents[k].replace(/^Optional: /, '')}{link && <> <a href={link[0]} target="_blank" rel="noopener noreferrer">{link[1]}</a></>}<em>{req ? 'Required' : 'Optional'}</em></span>
+                          <span><ConsentText text={cfg.consents[k]} k={k} /><em>{req ? 'Required' : 'Optional'}</em></span>
                         </label>
                       );
                     })}

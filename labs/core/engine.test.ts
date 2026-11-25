@@ -236,12 +236,12 @@ test('S1: a checkout with someone else\'s email does not change their details', 
   const o = labs.checkout(rider('victim@x.dk', { start, name: 'Real Name', phone: '+45 1111' }));
   labs.paid(o.id);
   assert.equal(o.newCustomer, true);
-  const attack = labs.checkout(rider('victim@x.dk', { qty: 3, later: true, name: 'Attacker', phone: '+45 9999', consents: { ...consents, film: true } }));
+  const attack = labs.checkout(rider('victim@x.dk', { qty: 3, later: true, name: 'Attacker', phone: '+45 9999', consents: { ...consents, research: true } }));
   assert.equal(attack.newCustomer, false, 'an existing rider: this checkout may not log a browser in');
   const c = labs.customerByEmail('victim@x.dk')!;
   assert.equal(c.name, 'Real Name');
   assert.equal(c.phone, '+45 1111');
-  assert.equal(c.consents!.items.film, false);
+  assert.equal(c.consents!.items.research, false);
 });
 
 test('S2: text is cut to size and stripped of line breaks; nonsense FTP is dropped', () => {
@@ -345,7 +345,7 @@ test('partner gets a private consent link; the team sees the consent', () => {
   assert.ok(!mail.body.includes('[link]'));
   assert.equal(labs.partnerInvite(o.partnerToken!).partnerName, 'Pat');
   assert.throws(() => labs.partnerInvite('x'.repeat(24)), /not valid/);
-  assert.throws(() => labs.partnerConsent(o.partnerToken!, { consents: { ready: true } }), /Tick/);
+  assert.throws(() => labs.partnerConsent(o.partnerToken!, { consents: { research: true } }), /Tick/);
   labs.partnerConsent(o.partnerToken!, { consents, phone: '+45 2222' });
   assert.equal(labs.teamDays()[0].list[0].order.partnerConsents!.items.health, true);
 });

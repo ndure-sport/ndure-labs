@@ -486,7 +486,7 @@ function Team({ run }: { run: Run }) {
                       <td><b>{r.customer.name}</b>{r.withPartner && <><br />+ {r.partnerName}</>}</td>
                       <td>{r.customer.email}<br />{r.customer.phone}</td>
                       <td>{r.customer.ftp ? `${r.customer.ftp} W` : 'n/a'}<br /><span className="muted">{r.customer.goal}</span></td>
-                      <td className="small">{cs?.health ? 'Health ok' : 'Missing'}{cs?.film ? ', film ok' : ''}{cs?.research ? ', R&D ok' : ''}</td>
+                      <td className="small">{cs?.health ? 'Health ok' : 'Missing'}{cs?.research ? ', R&D ok' : ''}</td>
                       <td>{statusLabel(r)}</td>
                       <td className="actions">
                         {started && r.status === 'booked' && (

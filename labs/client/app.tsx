@@ -135,6 +135,7 @@ function AfterPayment({ orderId, onLoggedIn }: { orderId: string; onLoggedIn: ()
         {st?.firstStart ? `Confirming your payment and your session on ${when(st.firstStart)}.` : 'Confirming your payment.'} This page updates by itself.
         {tries > 30 ? ' This is taking longer than usual. You will get an email as soon as the payment is confirmed.' : ''}
       </p>
+      <p className="small muted">Check your spam folder. Your confirmation and calendar invite come from performance@ndure.dk. Not in your inbox within a few minutes? Look in spam or promotions and mark it as not spam, so you also get the reminder the day before.</p>
     </section>
   );
 }
@@ -261,6 +262,7 @@ function Account() {
         <section className="card narrow">
           <h1>One moment</h1>
           <p className="muted">{a.pendingOrder?.firstStart ? `Confirming your payment and your session on ${when(a.pendingOrder.firstStart)}.` : 'Confirming your payment.'} This page updates by itself.</p>
+          <p className="small muted">Check your spam folder. Your confirmation and calendar invite come from performance@ndure.dk. Not in your inbox within a few minutes? Look in spam or promotions and mark it as not spam, so you also get the reminder the day before.</p>
         </section>
       </Shell>
     );
@@ -270,6 +272,7 @@ function Account() {
   return (
     <Shell>
       <NoteBox note={note} />
+      {paidId && <div className="msg ok">Payment received. Check your spam folder: your confirmation and calendar invite come from performance@ndure.dk. Mark it as not spam, so you also get the reminder the day before.</div>}
       {a.pendingOrder?.firstStatus === 'failed' && (
         <div className="msg err">The session you picked filled up while you were paying. Your session is safe in your account: choose another time below.</div>
       )}
@@ -535,7 +538,6 @@ function Sessions({ t, act, onLogout }: { t: TeamData; act: Act; onLogout: () =>
                     {r.status === 'no_show' && <span className="pill bad">No show</span>}
                     {r.form ? <span className="pill form">Form ✓</span> : r.status === 'booked' && <span className="pill fmiss">Form missing</span>}
                     {cs?.health && partnerOk ? <span className="pill ok">Health ok</span> : <span className="pill bad">Consent missing</span>}
-                    {cs?.film && <span className="pill fine">Film ok</span>}
                   </span>
                   <span className="sacts">
                     {started && r.status === 'booked' && (<>

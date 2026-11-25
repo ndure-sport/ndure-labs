@@ -1,6 +1,7 @@
 // The data the app keeps. Each type maps one to one onto a database table later.
 
-export type ConsentKey = 'ready' | 'health' | 'inperson' | 'terms' | 'research' | 'film';
+// Older records can also hold ready, inperson and film (from before 25 Nov 2026).
+export type ConsentKey = 'terms' | 'health' | 'research';
 export type Consents = { at: string; version: string; items: Record<ConsentKey, boolean> };
 
 export type Customer = {

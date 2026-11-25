@@ -683,3 +683,8 @@ span.mday { border-color: transparent; color: #BBB; font-weight: 400; cursor: de
 h1, h2, h3, summary, .v-big, .v-foot-h, .v-line, .v-steps b { text-wrap: balance; }
 p, li, .v-card span, .v-steps span, .v-pm, .v-lbl, .v-note { text-wrap: pretty; }
 .bl { display: block; text-wrap: balance; }
+
+/* Plan cards as buttons (booking page) */
+button.v-pbtn { width: 100%; border: 0; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.v-plan.white { border: 1px solid var(--line); }
+.v-plan.white button.v-pbtn { border: 1px solid #CCC; background: transparent; color: #141414; }

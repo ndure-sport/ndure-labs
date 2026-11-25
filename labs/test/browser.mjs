@@ -122,7 +122,7 @@ for (const [label, ctxOpts] of [['desktop', { viewport: { width: 1440, height: 9
   ok('missing consents are caught on the page', await page.getByText('Tick all the required boxes.').isVisible());
   const boxes = page.locator('.checks .chk');
   const n = await boxes.count();
-  ok('six consent lines, four required', n === 6 && (await page.locator('.checks em', { hasText: 'Required' }).count()) === 4, `${n}`);
+  ok('three consent lines, two required', n === 3 && (await page.locator('.checks em', { hasText: 'Required' }).count()) === 2, `${n}`);
   for (let i = 0; i < n; i++) if ((await boxes.nth(i).locator('em').innerText()) === 'Required') await boxes.nth(i).locator('input').check();
   ok('pay button shows the total', (await page.getByRole('button', { name: /^Pay / }).innerText()) === 'Pay 1,287 kr');
   await shot(page, `${label}-3-details`);

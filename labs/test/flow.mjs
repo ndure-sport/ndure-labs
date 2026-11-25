@@ -64,7 +64,7 @@ ok('payment webhook twice does not double book', (await webhook(orderA)) === 200
 
 console.log('\n-- S1 account takeover attempt');
 const X = who();
-r = await checkout(X, { qty: 3, later: true, name: 'Attacker', email: emailA, phone: '+45 6666 6666', consents: { ...C, film: true } });
+r = await checkout(X, { qty: 3, later: true, name: 'Attacker', email: emailA, phone: '+45 6666 6666', consents: { ...C, research: true } });
 ok('attacker can start a checkout with Anna\'s email', r.status === 200);
 const orderX = orderOf(r);
 ok('attacker browser is not logged in before paying', (await call('/api/me', undefined, X)).status === 401);

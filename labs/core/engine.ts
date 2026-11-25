@@ -7,16 +7,13 @@ import { MEET, MEET_SHORT, PICKUP, PREP, BRING, PEDALS, SHOWERS, formLink } from
 import type { Db, Customer, Order, Booking, Email, ConsentKey, Consents, Lead, LeadStatus, Contact, ReportStatus, PreForm } from './types';
 import { localStarts, addMonths, cphDate, hours, days, when, fmt } from './time';
 
-export const CONSENT_VERSION = '2026-11-04';
+export const CONSENT_VERSION = '2026-11-25';
 export const CONSENT_TEXT: Record<ConsentKey, string> = {
-  ready: 'I answered no to every question in the health check and I am fit for a maximal effort.',
+  terms: 'I accept the terms and cancellation policy. I come to the lab in Kongens Lyngby for every session (a test, no sensor included), and I answered no to every question in the health check.',
   health: 'I explicitly consent to NDURE ApS processing my health data (blood lactate, heart rate, power) to make my report.',
-  inperson: 'I come to the lab in Kongens Lyngby, Denmark, for every session. This is a test: no sensor or device is included.',
-  terms: 'I accept the terms and cancellation policy.',
-  research: 'Optional: NDURE may use my anonymised sensor data to develop its sensor.',
-  film: 'Optional: I am fine with being filmed for NDURE content.'
+  research: 'Optional: NDURE may use my anonymised sensor data to develop its sensor.'
 };
-export const REQUIRED_CONSENTS: ConsentKey[] = ['ready', 'health', 'inperson', 'terms'];
+export const REQUIRED_CONSENTS: ConsentKey[] = ['terms', 'health'];
 
 export class LabsError extends Error {
   constructor(message: string, public code: string) {

@@ -47,11 +47,12 @@ export const FLOW: [string, string][] = [
 ];
 
 export const FAQS: [string, string][] = [
-  ['Do I get a sensor to take home?', 'No. You ride with ours in the lab. NDURE Labs is a test, not a device.'],
-  ['Where is the lab?', 'At DTU Science Park, Diplomvej 381, Kongens Lyngby. We pick you up at the reception.'],
-  ['What do I bring?', 'Cycling shoes, bib shorts, a sleeveless top and a bottle. Showers are available after.'],
-  ['I am not a pro. Is this for me?', 'Yes. If you ride regularly, you will get a lot out of it.'],
-  ['How often should I come back?', 'We suggest every month, or every few weeks in your build. Your sessions are valid for 12 months.'],
+  ['Do I get a sensor to take home?', 'No. You ride with an NDURE sensor in the lab. NDURE Labs is a test, not a device.'],
+  ['Where is the lab?', 'At DTU Science Park, Diplomvej 381, Kongens Lyngby. We pick you up at the reception. Make sure to be on time.'],
+  ['What do I bring?', 'Cycling shoes and bib shorts, a sleeveless top (the sensor sits on your upper arm), a water bottle and your heart rate strap if you have one. The bike has Shimano SPD-SL pedals: bring your own pedals for other cleats. Showers are available after.'],
+  ['How do I prepare?', 'Avoid hard training in the 24 hours before. Eat a normal meal 2 to 3 hours before and drink normally. After booking you fill in a 4 minute pre session form.'],
+  ['I am not a pro. Is this for me?', 'Yes. The test starts easy and gets harder in steps, at your own level. Think of someone riding 4 hours a week towards a first gran fondo. A racer training 12 hours a week gets the same test, just with higher numbers. Our performance physiologist goes through your personal report with you either way.'],
+  ['How often should I come back?', 'We suggest every month to every 8 weeks. Your sessions are valid for 12 months.'],
   ['Can I change my date?', 'Yes, for free until 24 hours before your session.'],
   ['Is it a subscription?', 'No. You pay once.']
 ];
