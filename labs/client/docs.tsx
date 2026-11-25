@@ -1,19 +1,38 @@
 // Terms, privacy and the health check. FIRST VERSIONS: have them checked before launch.
 
 import { DEFAULT_CONFIG as CFG, noticeText } from '../core/config';
+import { useEffect, useRef, useState } from 'react';
 import { CONTACT_EMAIL } from './content';
 import { Header, Footer, kr } from './shared';
 
-const UPDATED = '4 November 2026';
+const UPDATED = '25 November 2026';
 
 function Doc({ title, children }: { title: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [toc, setToc] = useState<{ id: string; text: string }[]>([]);
+  useEffect(() => {
+    document.title = `${title}, NDURE Labs`;
+    const hs = Array.from(ref.current?.querySelectorAll('h2') ?? []);
+    hs.forEach((h) => { h.id = h.id || (h.textContent ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); });
+    setToc(hs.map((h) => ({ id: h.id, text: h.textContent ?? '' })));
+  }, [title]);
   return (
     <>
       <Header />
-      <main className="page doc">
-        <h1>{title}</h1>
-        <p className="muted small">Last updated {UPDATED}</p>
-        {children}
+      <main className="doc-page">
+        <div className="doc-head">
+          <span className="v-tag">NDURE Labs</span>
+          <h1>{title}</h1>
+          <p className="muted small">Last updated {UPDATED}</p>
+        </div>
+        <div className="doc-body">
+          {toc.length > 1 ? (
+            <nav className="doc-toc" aria-label="On this page">
+              {toc.map((t) => <a key={t.id} href={`#${t.id}`}>{t.text}</a>)}
+            </nav>
+          ) : <div className="doc-toc empty" aria-hidden="true" />}
+          <div className="doc" ref={ref}>{children}</div>
+        </div>
       </main>
       <Footer />
     </>
@@ -26,7 +45,7 @@ export function Terms() {
     <Doc title="Terms">
       <p>These terms cover NDURE Labs sessions sold by NDURE ApS, CVR 45530701, Diplomvej 376, 2800 Kongens Lyngby, Denmark ({CONTACT_EMAIL}).</p>
       <h2>The session</h2>
-      <p>A session is an in person lactate test on a bike in our lab in Kongens Lyngby. It takes about 2 hours. You get a written performance report within 48 hours. No sensor or device is sold or included.</p>
+      <p>A session is an in person lactate test on a bike in our lab in Kongens Lyngby. It takes about 2 hours. After the session you get a written performance report by email. No sensor or device is sold or included.</p>
       <h2>Prices and payment</h2>
       <p>Prices include VAT: {prices}. You pay once, in advance, through Stripe. It is not a subscription.</p>
       <h2>Validity</h2>
