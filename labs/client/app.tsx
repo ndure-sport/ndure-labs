@@ -146,7 +146,6 @@ type AccountData = {
   balance: { total: number; orders: Order[] };
   upcoming: Upcoming[];
   past: Booking[];
-  nextDue: string | null;
   pendingOrder: { status: string; firstStatus: string; firstStart: string | null } | null;
 };
 
@@ -318,7 +317,6 @@ function Account() {
             <h3 style={{ margin: 0 }}>Sessions left</h3>
             <p className="bignum">{a.balance.total}</p>
             {a.balance.orders.map((o) => <p key={o.id} className="small muted" style={{ margin: 0 }}>{o.remaining} of {o.qty}{o.free ? ' (free)' : o.parentId ? ' (added)' : ''}, valid until {fmt(o.expiresAt!, { day: 'numeric', month: 'short', year: 'numeric' })}</p>)}
-            {a.nextDue && (Date.parse(a.nextDue) <= Date.now() ? <p className="small" style={{ margin: 0 }}><b>Your next test is due now.</b></p> : <p className="small" style={{ margin: 0 }}>Next test due around <b>{fmt(a.nextDue, { day: 'numeric', month: 'long' })}</b></p>)}
           </div>
           {a.balance.total > 0 && <button className="btn full" disabled={mode?.type === 'book'} onClick={() => setMode({ type: 'book' })}>Book a session</button>}
           <a className={a.balance.total > 0 ? 'btn ghost full' : 'btn full'} href="/#price">Buy more sessions</a>
